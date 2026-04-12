@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>spatioClimata Examples</title>
+    <meta name="description" content="spatioClimata practical examples for hydrology and climate data pipelines." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
+    <link rel="icon" type="image/png" href="../assets/images/logo.png" />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="../index.html">
+          <span class="brand-mark"></span>
+          <span>spatioClimata</span>
+        </a>
+        <nav class="nav">
+          <a href="../index.html"><i class="bi bi-house"></i>Home</a>
+          <a href="docs.html"><i class="bi bi-journal-text"></i>Docs</a>
+          <a href="registry.html"><i class="bi bi-database"></i>Registry</a>
+          <a class="active" href="examples.html"><i class="bi bi-flask"></i>Examples</a>
+          <a href="https://github.com/nethumperera/spatioClimata" target="_blank" rel="noreferrer"><i class="bi bi-github"></i>GitHub</a>
+          <button class="btn btn-outline theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode">
+            <i class="bi bi-moon-stars-fill"></i>
+            <span data-theme-label>Dark</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-banner">
+        <div class="container" data-reveal>
+          <div class="eyebrow">Examples</div>
+          <h1>Practical scientific workflows</h1>
+          <p class="section-lead">
+            Use these patterns as templates for basin-scale analytics and data engineering jobs.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top: 0">
+        <div class="container grid-3">
+          <article class="card" data-reveal>
+            <div class="feature-head">
+              <i class="bi bi-droplet-half"></i>
+              <h3>Daily ERA5 for a Basin</h3>
+            </div>
+            <p>Use native daily statistics for smaller transfer volume and fast downstream analysis.</p>
+            <div class="code">from spatioclimata import FetchRequest, TimeRange, AreaBBox, fetch
+
+request = FetchRequest(
+  dataset="derived-era5-single-levels-daily-statistics",
+  variables=["total_precipitation", "2m_temperature"],
+  time_range=TimeRange.from_strings("2020-01-01", "2020-12-31"),
+  area=AreaBBox.from_sequence([6.22,80.41,5.91,80.64]),
+  frequency="daily",
+)
+result = fetch(request)</div>
+            <div class="tag-list">
+              <span class="tag">Daily</span>
+              <span class="tag">ERA5</span>
+            </div>
+          </article>
+
+          <article class="card" data-reveal>
+            <div class="feature-head">
+              <i class="bi bi-clock-history"></i>
+              <h3>Hourly to Daily Conversion</h3>
+            </div>
+            <p>Ask for daily output from hourly-native datasets and let the pipeline handle resampling.</p>
+            <div class="code">request = FetchRequest(
+  dataset="reanalysis-era5-single-levels",
+  variables=["surface_runoff", "sub_surface_runoff"],
+  ...,
+  frequency="daily",
+  merge_strategy="yearly",
+)</div>
+            <div class="tag-list">
+              <span class="tag">Resample</span>
+              <span class="tag">Time QA</span>
+            </div>
+          </article>
+
+          <article class="card" data-reveal>
+            <div class="feature-head">
+              <i class="bi bi-cpu"></i>
+              <h3>Dask-Chunked Processing</h3>
+            </div>
+            <p>Use chunking to process larger jobs without loading everything into memory.</p>
+            <div class="code">request = FetchRequest(
+  ...,
+  use_dask=True,
+  chunks={"time": 240, "latitude": 16, "longitude": 16},
+)</div>
+            <div class="tag-list">
+              <span class="tag">Dask</span>
+              <span class="tag">Scalable</span>
+            </div>
+          </article>
+        </div>
+
+        <div class="image-strip" style="margin-top: 1.1rem">
+          <article class="image-card" data-reveal>
+            <img
+              src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80"
+              alt="River basin terrain"
+              loading="lazy"
+            />
+            <div class="meta">
+              <h4>Basin monitoring</h4>
+              <p>Combine runoff, precipitation, and discharge into one analysis stream.</p>
+            </div>
+          </article>
+          <article class="image-card" data-reveal>
+            <img
+              src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80"
+              alt="Earth observation data concept"
+              loading="lazy"
+            />
+            <div class="meta">
+              <h4>Earth-system context</h4>
+              <p>Use Copernicus products with reproducible engineering practices.</p>
+            </div>
+          </article>
+          <article class="image-card" data-reveal>
+            <img
+              src="https://images.unsplash.com/photo-1530908295418-a12e326966ba?auto=format&fit=crop&w=1200&q=80"
+              alt="Data science desk setup"
+              loading="lazy"
+            />
+            <div class="meta">
+              <h4>Analytics execution</h4>
+              <p>Move from raw archives to model-ready datasets quickly.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <p>
+          spatioClimata • <span data-year></span> • Examples by
+          <a href="https://nethumperera.github.io/portfolio/" target="_blank" rel="noreferrer">Nethum Perera</a>
+        </p>
+      </div>
+    </footer>
+
+    <script src="../assets/js/main.js"></script>
+  </body>
+</html>

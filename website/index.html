@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spatio Climata | Copernicus Data Engineering Framework</title>
+    <meta
+      name="description"
+      content="spatioClimata is a Python package for ERA5, GloFAS, and Copernicus workflows with analytics-ready pipeline outputs."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
+    <link rel="icon" type="image/png" href="assets/images/logo.png" />
+    <link rel="stylesheet" href="assets/css/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-mark"></span>
+          <span>spatioClimata</span>
+        </a>
+        <nav class="nav">
+          <a class="active" href="index.html"><i class="bi bi-house"></i>Home</a>
+          <a href="pages/docs.html"><i class="bi bi-journal-text"></i>Docs</a>
+          <a href="pages/registry.html"><i class="bi bi-database"></i>Registry</a>
+          <a href="pages/examples.html"><i class="bi bi-flask"></i>Examples</a>
+          <a href="https://github.com/nethumperera/spatioClimata" target="_blank" rel="noreferrer"><i class="bi bi-github"></i>GitHub</a>
+          <button class="btn btn-outline theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode">
+            <i class="bi bi-moon-stars-fill"></i>
+            <span data-theme-label>Dark</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div data-reveal>
+            <div class="eyebrow">Copernicus Data Engineering</div>
+            <h1>From climate APIs to <span class="accent">scientific, analytics-ready datasets</span>.</h1>
+            <p>
+              spatioClimata unifies CDS and EWDS access, validates dataset capabilities,
+              runs resumable monthly pipelines, and exports clean NetCDF outputs for research,
+              forecasting, and water intelligence workflows.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="pages/docs.html"><i class="bi bi-stars"></i>Read Docs</a>
+              <a class="btn btn-outline" href="pages/registry.html"><i class="bi bi-database"></i>Open Registry</a>
+              <a class="btn btn-outline" href="https://pypi.org/" target="_blank" rel="noreferrer"><i class="bi bi-box-seam"></i>PyPI</a>
+            </div>
+            <div class="stat-row">
+              <div class="stat">
+                <i class="bi bi-globe2"></i>
+                <b data-counter="2">2</b>
+                Multi-endpoint support
+              </div>
+              <div class="stat">
+                <i class="bi bi-clock-history"></i>
+                <b data-counter="3">3</b>
+                Frequency-aware pipeline
+              </div>
+              <div class="stat">
+                <i class="bi bi-cpu"></i>
+                <b data-counter="12">12</b>
+                Chunked large-scale processing
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-card" data-reveal>
+            <div class="hero-card-header">
+              <span><i class="bi bi-terminal"></i> Quick Install</span>
+              <button class="btn btn-outline" data-copy="pip install spatioClimata">Copy</button>
+            </div>
+            <pre>pip install spatioClimata
+
+spatioclimata auth init --open-browser
+
+spatioclimata fetch \
+  --dataset derived-era5-single-levels-daily-statistics \
+  --variables total_precipitation,2m_temperature \
+  --start 2020-01-01 \
+  --end 2020-12-31 \
+  --area 6.22,80.41,5.91,80.64 \
+  --frequency daily</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <h2 data-reveal>Built for hydrology and climate intelligence</h2>
+          <p class="section-lead" data-reveal>
+            Purpose-built for basin-scale analysis, forecasting preparation, and reliable data operations.
+          </p>
+
+          <div class="grid-3">
+            <article class="card" data-reveal>
+              <div class="feature-head">
+                <i class="bi bi-shield-check"></i>
+                <h3>Smart Validation</h3>
+              </div>
+              <p>
+                Detect unsupported variables and frequencies before expensive API jobs.
+                Plan source frequency automatically for conversion workflows.
+              </p>
+            </article>
+
+            <article class="card" data-reveal>
+              <div class="feature-head">
+                <i class="bi bi-arrow-repeat"></i>
+                <h3>Resumable Pipeline</h3>
+              </div>
+              <p>
+                Download month-by-month with retries and idempotent outputs to recover from
+                interruptions without restarting from scratch.
+              </p>
+            </article>
+
+            <article class="card" data-reveal>
+              <div class="feature-head">
+                <i class="bi bi-graph-up-arrow"></i>
+                <h3>Analytics-Ready Outputs</h3>
+              </div>
+              <p>
+                Transform and export standardized datasets by month or year for direct use in
+                notebooks, ML models, and geospatial analytics.
+              </p>
+            </article>
+          </div>
+
+          <div class="metric-grid" data-reveal>
+            <div class="metric">
+              <b data-counter="24">24</b>
+              hourly time slots/day
+            </div>
+            <div class="metric">
+              <b data-counter="365">365</b>
+              daily snapshots/year
+            </div>
+            <div class="metric">
+              <b data-counter="3">3</b>
+              merge strategies
+            </div>
+            <div class="metric">
+              <b data-counter="100">100</b>
+              percent reproducible pipeline
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <h2 data-reveal>Hydroclimate Signal Lab</h2>
+          <p class="section-lead" data-reveal>
+            Interactive quick-look tools for planning dataset frequency, inspecting expected seasonal shape,
+            and approximating basin spatial footprint.
+          </p>
+
+          <div class="science-grid">
+            <article class="chart-card" data-reveal>
+              <h3><i class="bi bi-activity"></i> Seasonal Signal Preview</h3>
+              <p class="section-lead">Switch series to inspect typical hydroclimate behavior.</p>
+              <div class="hero-actions" style="margin-bottom: 0.7rem">
+                <button class="btn btn-outline active" data-series="precipitation">Precipitation</button>
+                <button class="btn btn-outline" data-series="discharge">Discharge</button>
+                <button class="btn btn-outline" data-series="evaporation">Evaporation</button>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="signalChart"></canvas>
+              </div>
+            </article>
+
+            <article class="science-controls" data-reveal>
+              <h3><i class="bi bi-sliders2"></i> Pipeline Planner</h3>
+              <div class="form-grid">
+                <div>
+                  <label for="sourceFreq">Source frequency</label>
+                  <select id="sourceFreq" class="input">
+                    <option value="hourly">Hourly</option>
+                    <option value="daily" selected>Daily</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="targetFreq">Target frequency</label>
+                  <select id="targetFreq" class="input">
+                    <option value="hourly">Hourly</option>
+                    <option value="daily">Daily</option>
+                    <option value="monthly" selected>Monthly</option>
+                  </select>
+                </div>
+              </div>
+              <div class="result-panel" id="freqAdvice"></div>
+
+              <h3 style="margin-top: 1rem"><i class="bi bi-bounding-box"></i> Basin Area Estimator</h3>
+              <div class="form-grid">
+                <div>
+                  <label for="north">North</label>
+                  <input id="north" class="input" type="number" step="0.01" value="6.22" />
+                </div>
+                <div>
+                  <label for="south">South</label>
+                  <input id="south" class="input" type="number" step="0.01" value="5.91" />
+                </div>
+                <div>
+                  <label for="west">West</label>
+                  <input id="west" class="input" type="number" step="0.01" value="80.41" />
+                </div>
+                <div>
+                  <label for="east">East</label>
+                  <input id="east" class="input" type="number" step="0.01" value="80.64" />
+                </div>
+              </div>
+              <div class="result-panel" id="areaResult"></div>
+
+              <div class="equation">
+                <p><strong>Daily mean for an evenly sampled hourly series:</strong></p>
+                \[
+                \bar{x}_{d}=\frac{1}{N_{d}}\sum_{h=1}^{N_{d}}x_{d,h}
+                \]
+                <p><strong>Area approximation used in this basin estimator:</strong></p>
+                \[
+                A\approx |\Delta lat|\cdot 111.32\cdot |\Delta lon|\cdot 111.32\cdot \cos(\varphi_{mean})
+                \]
+              </div>
+            </article>
+          </div>
+
+          <div class="image-strip">
+            <article class="image-card" data-reveal>
+              <img
+                src="https://images.unsplash.com/photo-1527489377706-5bf97e608852?auto=format&fit=crop&w=1200&q=80"
+                alt="Atmospheric cloud patterns viewed from above"
+                loading="lazy"
+              />
+              <div class="meta">
+                <h4>Atmospheric Context</h4>
+                <p>Map-scale weather structures for regional interpretation.</p>
+                <div class="tag-list">
+                  <span class="tag">ERA5</span>
+                  <span class="tag">Reanalysis</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="image-card" data-reveal>
+              <img
+                src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=1200&q=80"
+                alt="River and watershed landscape"
+                loading="lazy"
+              />
+              <div class="meta">
+                <h4>Hydrology Focus</h4>
+                <p>River discharge and runoff insights for basin-scale workflows.</p>
+                <div class="tag-list">
+                  <span class="tag">GloFAS</span>
+                  <span class="tag">Discharge</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="image-card" data-reveal>
+              <img
+                src="https://images.unsplash.com/photo-1518444065439-e933c06ce9cd?auto=format&fit=crop&w=1200&q=80"
+                alt="Scientific workstation with data screens"
+                loading="lazy"
+              />
+              <div class="meta">
+                <h4>Engineering Operations</h4>
+                <p>Reliable, repeatable, and analysis-first pipeline execution.</p>
+                <div class="tag-list">
+                  <span class="tag">Pipeline</span>
+                  <span class="tag">Dask</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <h2 data-reveal>Pipeline Flow</h2>
+          <p class="section-lead" data-reveal>Every stage is explicit, inspectable, and production-oriented.</p>
+
+          <div class="timeline">
+            <div class="timeline-item" data-reveal>
+              <div class="step">Step 1</div>
+              <h3><i class="bi bi-key"></i>Auth and Capability Resolution</h3>
+              <p>Load API key, resolve dataset metadata, and validate request constraints.</p>
+            </div>
+            <div class="timeline-item" data-reveal>
+              <div class="step">Step 2</div>
+              <h3><i class="bi bi-cloud-arrow-down"></i>Monthly Retrieval</h3>
+              <p>Build requests and run reliable download retries against CDS or EWDS.</p>
+            </div>
+            <div class="timeline-item" data-reveal>
+              <div class="step">Step 3</div>
+              <h3><i class="bi bi-bezier2"></i>Transform and Normalize</h3>
+              <p>Clip spatial bounds, resample frequency, and preserve analysis-friendly coordinates.</p>
+            </div>
+            <div class="timeline-item" data-reveal>
+              <div class="step">Step 4</div>
+              <h3><i class="bi bi-check2-circle"></i>Publish Outputs</h3>
+              <p>Persist monthly or yearly NetCDF files for reproducible downstream analytics.</p>
+            </div>
+          </div>
+
+          <div class="cta" data-reveal>
+            <div>
+              <h3>Ready to use spatioClimata in your workflow?</h3>
+              <p>Start with the docs, then run your first basin-scale fetch pipeline.</p>
+            </div>
+            <a class="btn btn-primary" href="pages/docs.html"><i class="bi bi-rocket-takeoff"></i>Get Started</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <p>
+          © spatioClimata • <span data-year></span> • Built by
+          <a href="https://nethumperera.github.io/portfolio/" target="_blank" rel="noreferrer">Nethum Perera</a>
+        </p>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+    <script src="assets/js/main.js"></script>
+  </body>
+</html>

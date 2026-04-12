@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>spatioClimata Docs</title>
+    <meta name="description" content="spatioClimata documentation for climate and hydrology data engineering workflows." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
+    <link rel="icon" type="image/png" href="../assets/images/logo.png" />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="../index.html">
+          <span class="brand-mark"></span>
+          <span>spatioClimata</span>
+        </a>
+        <nav class="nav">
+          <a href="../index.html"><i class="bi bi-house"></i>Home</a>
+          <a class="active" href="docs.html"><i class="bi bi-journal-text"></i>Docs</a>
+          <a href="registry.html"><i class="bi bi-database"></i>Registry</a>
+          <a href="examples.html"><i class="bi bi-flask"></i>Examples</a>
+          <a href="https://github.com/nethumperera/spatioClimata" target="_blank" rel="noreferrer"><i class="bi bi-github"></i>GitHub</a>
+          <button class="btn btn-outline theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode">
+            <i class="bi bi-moon-stars-fill"></i>
+            <span data-theme-label>Dark</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-banner">
+        <div class="container" data-reveal>
+          <div class="eyebrow">Documentation</div>
+          <h1>Get started quickly and scale safely with scientific rigor</h1>
+          <p class="section-lead">
+            The package is organized for both interactive analysis and repeatable production pipelines.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top: 0">
+        <div class="container doc-list">
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-download"></i> Install</h3>
+            <div class="code">pip install spatioClimata</div>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-key"></i> Authentication</h3>
+            <p>Run interactive setup and optionally open account/key pages in your browser.</p>
+            <div class="code">spatioclimata auth init --open-browser</div>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-collection"></i> Discover Datasets</h3>
+            <div class="code">spatioclimata datasets list
+spatioclimata datasets variables reanalysis-era5-single-levels</div>
+            <p style="margin-top: 0.7rem">
+              Need a visual lookup? Use the
+              <a href="registry.html"><strong>Dataset Registry page</strong></a>
+              to search supported datasets, variable descriptions, and support level.
+            </p>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-diagram-3"></i> Run a Pipeline</h3>
+            <div class="code">spatioclimata fetch \
+  --dataset cems-glofas-historical \
+  --variables river_discharge_in_the_last_24_hours \
+  --start 2021-01-01 \
+  --end 2021-12-31 \
+  --area 6.22,80.41,5.91,80.64 \
+  --frequency daily \
+  --merge-strategy yearly</div>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-cpu"></i> Use Dask for Larger Jobs</h3>
+            <p>
+              Enable Dask mode with chunk maps for large-scale temporal and spatial processing.
+            </p>
+            <div class="code">spatioclimata fetch ... --use-dask --chunks time=240,latitude=16,longitude=16</div>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-folder2-open"></i> Repository Documentation</h3>
+            <p>See full guides in the repository:</p>
+            <ul>
+              <li>docs/quickstart.md</li>
+              <li>docs/architecture.md</li>
+              <li>docs/pipeline.md</li>
+              <li>docs/dataset-support.md</li>
+              <li>docs/release-deploy.md</li>
+            </ul>
+          </article>
+
+          <article class="doc-item docs-accordion" data-reveal>
+            <h3><i class="bi bi-mortarboard"></i> Scientific Notes</h3>
+            <details>
+              <summary><i class="bi bi-thermometer-sun"></i> Aggregation logic</summary>
+              <p>
+                Prefer native daily products when available. Otherwise use hourly source and aggregate with
+                time-aware mean/sum according to variable semantics.
+              </p>
+            </details>
+            <details>
+              <summary><i class="bi bi-bounding-box"></i> Spatial integrity</summary>
+              <p>
+                Keep bounding boxes tight for lower transfer volume. Validate coordinate ordering and standardize
+                to time/latitude/longitude before merge operations.
+              </p>
+            </details>
+            <details>
+              <summary><i class="bi bi-clipboard2-check"></i> Quality controls</summary>
+              <p>
+                Validate expected timesteps, monotonic time ordering, and variable presence before yearly merge.
+              </p>
+            </details>
+            <div class="equation">
+              <p><strong>Daily mean for evenly sampled hourly records:</strong></p>
+              \[
+              \bar{x}_{d}=\frac{1}{N_{d}}\sum_{h=1}^{N_{d}}x_{d,h}
+              \]
+              <p><strong>For accumulated variables (for example precipitation), daily sum is usually preferred:</strong></p>
+              \[
+              X_{d}=\sum_{h=1}^{N_{d}}x_{d,h}
+              \]
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <p>
+          spatioClimata • <span data-year></span> • Documentation by
+          <a href="https://nethumperera.github.io/portfolio/" target="_blank" rel="noreferrer">Nethum Perera</a>
+        </p>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+    <script src="../assets/js/main.js"></script>
+  </body>
+</html>
