@@ -37,11 +37,6 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    environment:
-      name: pypi
-      url: https://pypi.org/p/spatioClimata
     steps:
       - name: Download dist artifact
         uses: actions/download-artifact@v4
@@ -51,7 +46,5 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Preferred: configure trusted publishing on PyPI.
-        # Alternative: uncomment below and set PYPI_API_TOKEN in repository secrets.
-        # with:
-        #   password: ${{ secrets.PYPI_API_TOKEN }}
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
