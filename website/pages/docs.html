@@ -87,6 +87,52 @@ spatioclimata datasets variables reanalysis-era5-single-levels</div>
           </article>
 
           <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-terminal"></i> Python API Quickstart</h3>
+            <p>Use the programmatic API for notebook workflows and automated pipelines.</p>
+            <div class="code">from spatioclimata import AreaBBox, FetchRequest, TimeRange, fetch
+
+request = FetchRequest(
+  dataset="reanalysis-era5-single-levels",
+  variables=["2m_temperature", "total_precipitation"],
+  time_range=TimeRange.from_strings("2020-01-01", "2020-01-31"),
+  area=AreaBBox.from_sequence([30.2, -95.9, 29.3, -94.9]),
+  frequency="daily",
+  output_dir="./outputs",
+)
+
+result = fetch(request)
+print(result.saved_files)</div>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-bounding-box"></i> Bounding Box and Grid</h3>
+            <p>Use the order north,west,south,east. Keep the box large enough to include at least one grid cell.</p>
+            <div class="code">--area 30.2,-95.9,29.3,-94.9
+--grid 0.25,0.25</div>
+            <p style="margin-top: 0.7rem">
+              Use <code>--grid</code> to control resolution or avoid very small boxes that clip all grid points.
+            </p>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-clipboard2-check"></i> Validation Checklist</h3>
+            <ul>
+              <li>Confirm dataset ID and variable list before long requests.</li>
+              <li>Check time range coverage and expected timestep count.</li>
+              <li>Validate that bbox order is north,west,south,east.</li>
+              <li>Ensure target frequency is supported or convertible.</li>
+            </ul>
+          </article>
+
+          <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-hdd"></i> Outputs and File Naming</h3>
+            <p>Outputs are stored as NetCDF with monthly or yearly grouping depending on merge strategy.</p>
+            <div class="code">reanalysis_era5_single_levels_raw_hourly_2020_01.nc
+reanalysis_era5_single_levels_daily_2020_01.nc
+derived_era5_single_levels_daily_statistics_daily_2020.nc</div>
+          </article>
+
+          <article class="doc-item" data-reveal>
             <h3><i class="bi bi-cloud-arrow-down"></i> Example Test Download</h3>
             <p>Small download for a quick sanity check (Houston area, 2 days).</p>
             <div class="code">spatioclimata fetch \
@@ -127,6 +173,12 @@ spatioclimata datasets variables reanalysis-era5-single-levels</div>
                 Prefer native daily products when available. Otherwise use hourly source and aggregate with
                 time-aware mean/sum according to variable semantics.
               </p>
+              <div class="equation">
+                <p><strong>Daily sum from hourly accumulated values:</strong></p>
+                \[
+                X_{d}=\sum_{h=1}^{24}x_{d,h}
+                \]
+              </div>
             </details>
             <details>
               <summary><i class="bi bi-bounding-box"></i> Spatial integrity</summary>
@@ -134,12 +186,35 @@ spatioclimata datasets variables reanalysis-era5-single-levels</div>
                 Keep bounding boxes tight for lower transfer volume. Validate coordinate ordering and standardize
                 to time/latitude/longitude before merge operations.
               </p>
+              <div class="equation">
+                <p><strong>Approximate area of a bbox (km$^2$):</strong></p>
+                \[
+                A\approx |\Delta lat|\cdot 111.32\cdot |\Delta lon|\cdot 111.32\cdot \cos(\varphi_{mean})
+                \]
+              </div>
             </details>
             <details>
               <summary><i class="bi bi-clipboard2-check"></i> Quality controls</summary>
               <p>
                 Validate expected timesteps, monotonic time ordering, and variable presence before yearly merge.
               </p>
+              <div class="equation">
+                <p><strong>Expected hourly timesteps for $D$ days:</strong></p>
+                \[
+                N=24\cdot D
+                \]
+              </div>
+            </details>
+            <details>
+              <summary><i class="bi bi-water"></i> Area-weighted mean</summary>
+              <p>
+                When averaging spatial grids, weight by latitude to account for cell area differences.
+              </p>
+              <div class="equation">
+                \[
+                \bar{x}_{A}=\frac{\sum_{i}x_{i}\cos(\varphi_{i})}{\sum_{i}\cos(\varphi_{i})}
+                \]
+              </div>
             </details>
             <div class="equation">
               <p><strong>Daily mean for evenly sampled hourly records:</strong></p>
