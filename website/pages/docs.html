@@ -87,6 +87,19 @@ spatioclimata datasets variables reanalysis-era5-single-levels</div>
           </article>
 
           <article class="doc-item" data-reveal>
+            <h3><i class="bi bi-cloud-arrow-down"></i> Example Test Download</h3>
+            <p>Small download for a quick sanity check (Houston area, 2 days).</p>
+            <div class="code">spatioclimata fetch \
+  --dataset reanalysis-era5-single-levels \
+  --variables 2m_temperature,total_precipitation \
+  --start 2020-01-01 \
+  --end 2020-01-02 \
+  --area 30.2,-95.9,29.3,-94.9 \
+  --frequency daily \
+  --output-dir ./outputs-test</div>
+          </article>
+
+          <article class="doc-item" data-reveal>
             <h3><i class="bi bi-cpu"></i> Use Dask for Larger Jobs</h3>
             <p>
               Enable Dask mode with chunk maps for large-scale temporal and spatial processing.

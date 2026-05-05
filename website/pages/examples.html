@@ -54,6 +54,26 @@
         <div class="container grid-3">
           <article class="card" data-reveal>
             <div class="feature-head">
+              <i class="bi bi-cloud-arrow-down"></i>
+              <h3>Houston Quick Download</h3>
+            </div>
+            <p>Minimal CLI fetch for a small bbox and short time range. Requires an API key.</p>
+            <div class="code">spatioclimata fetch \
+  --dataset reanalysis-era5-single-levels \
+  --variables 2m_temperature,total_precipitation \
+  --start 2020-01-01 \
+  --end 2020-01-02 \
+  --area 30.2,-95.9,29.3,-94.9 \
+  --frequency daily \
+  --output-dir ./outputs-test</div>
+            <div class="tag-list">
+              <span class="tag">CLI</span>
+              <span class="tag">ERA5</span>
+            </div>
+          </article>
+
+          <article class="card" data-reveal>
+            <div class="feature-head">
               <i class="bi bi-droplet-half"></i>
               <h3>Daily ERA5 for a Basin</h3>
             </div>
