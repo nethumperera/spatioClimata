@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Globe | spatioClimata</title>
+    <meta
+      name="description"
+      content="Interactive 3D globe showing live climate and hydrology data from Copernicus CDS and GloFAS, powered by spatioClimata."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
+    <link rel="icon" type="image/png" href="../assets/images/logo.png" />
+    <link rel="stylesheet" href="../assets/css/style.css" />
+    <link rel="stylesheet" href="../assets/css/globe.css" />
+  </head>
+  <body data-globe-page data-theme="dark">
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="../index.html">
+          <span class="brand-mark"></span>
+          <span>spatioClimata</span>
+        </a>
+        <nav class="nav">
+          <a href="../index.html"><i class="bi bi-house"></i>Home</a>
+          <a class="active" href="globe.html"><i class="bi bi-globe2"></i>Live Globe</a>
+          <a href="docs.html"><i class="bi bi-journal-text"></i>Docs</a>
+          <a href="registry.html"><i class="bi bi-database"></i>Registry</a>
+          <a href="examples.html"><i class="bi bi-flask"></i>Examples</a>
+          <a href="https://github.com/nethumperera/spatioClimata" target="_blank" rel="noreferrer"><i class="bi bi-github"></i>GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <div id="globe-container">
+      <canvas id="globe-canvas"></canvas>
+
+      <!-- Control Panel -->
+      <div id="globe-controls" class="glass-panel">
+        <h3><i class="bi bi-broadcast"></i> Live Climate Data</h3>
+
+        <div class="control-group">
+          <label for="variable-select">Variable</label>
+          <select id="variable-select">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="date-slider">Date</label>
+          <input type="range" id="date-slider" min="0" max="0" value="0" step="1" />
+          <div class="date-display">
+            <span id="date-label">—</span>
+            <div class="playback-row">
+              <button id="play-btn" title="Play / Pause"><i class="bi bi-play-fill"></i></button>
+              <span id="playback-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="color-legend">
+          <div class="legend-label-text"><span id="legend-unit"></span></div>
+          <div class="gradient-bar"></div>
+          <div class="legend-labels">
+            <span id="legend-min">0</span>
+            <span id="legend-max">100</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info Badge -->
+      <div id="info-badge" class="glass-panel">
+        <span class="live-dot"></span>
+        <span id="info-text">Initializing…</span>
+      </div>
+
+      <!-- Loading Overlay -->
+      <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p>Loading climate data…</p>
+      </div>
+    </div>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+      }
+    }
+    </script>
+    <script type="module" src="../assets/js/globe.js"></script>
+  </body>
+</html>

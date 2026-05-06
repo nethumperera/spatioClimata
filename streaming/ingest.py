@@ -236,6 +236,16 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
 
     result = fetch(request, open_browser_on_missing_key=False, interactive_on_missing_key=False)
 
+    # Post-process and upload to Vercel Blob for the globe visualization
+    blob_result = postprocess_and_upload(
+        saved_files=result.saved_files or result.downloaded_files,
+        variables_fetched=variables_to_fetch,
+        fetch_date=fetch_date,
+        dataset=dataset,
+        retention_days=retention_days,
+        lag_days=lag_days,
+    )
+
     # Write manifest with incremental metadata
     window_start, window_end = compute_window(retention_days, lag_days)
     manifest = {
@@ -255,9 +265,189 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
         "processed_files": result.processed_files,
         "saved_files": result.saved_files,
         "warnings": result.warnings,
+        "blob_upload": blob_result,
     }
     write_manifest(output_root, manifest)
 
 
+# ── Post-processing → Vercel Blob ──────────────────────────────
+def postprocess_and_upload(
+    saved_files: list[str],
+    variables_fetched: list[str],
+    fetch_date: date,
+    dataset: str,
+    retention_days: int,
+    lag_days: int,
+) -> dict[str, Any]:
+    """Read NetCDF outputs, downsample to 1° grid, upload JSON to Vercel Blob."""
+    blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
+    if not blob_token:
+        return {"skipped": True, "reason": "BLOB_READ_WRITE_TOKEN not set"}
+
+    try:
+        import vercel_blob
+    except ImportError:
+        return {"skipped": True, "reason": "vercel_blob not installed"}
+
+    try:
+        import numpy as np
+        import xarray as xr
+    except ImportError:
+        return {"skipped": True, "reason": "xarray/numpy not available"}
+
+    uploaded: list[dict[str, str]] = []
+
+    for nc_file in saved_files:
+        if not nc_file.endswith(".nc"):
+            continue
+        try:
+            ds = xr.open_dataset(nc_file)
+        except Exception as exc:
+            print(f"[blob] Could not open {nc_file}: {exc}")
+            continue
+
+        for var_name in variables_fetched:
+            if var_name not in ds:
+                continue
+            try:
+                da = ds[var_name]
+
+                # Collapse time to daily mean
+                if "time" in da.dims and da.sizes["time"] > 1:
+                    da = da.mean(dim="time")
+                elif "time" in da.dims:
+                    da = da.isel(time=0)
+
+                # Identify lat/lon dims
+                lat_dim = next((d for d in da.dims if d.lower().startswith("lat")), None)
+                lon_dim = next((d for d in da.dims if d.lower().startswith("lon")), None)
+                if not lat_dim or not lon_dim:
+                    print(f"[blob] Cannot find lat/lon dims for {var_name}")
+                    continue
+
+                # Coarsen to ~1° resolution
+                lat_res = abs(float(da[lat_dim][1] - da[lat_dim][0])) if len(da[lat_dim]) > 1 else 1.0
+                coarsen_factor = max(1, round(1.0 / lat_res))
+                if coarsen_factor > 1:
+                    da = da.coarsen(
+                        {lat_dim: coarsen_factor, lon_dim: coarsen_factor},
+                        boundary="trim"
+                    ).mean()
+
+                # Sort lat descending (90 → -90) for equirectangular texture mapping
+                if float(da[lat_dim][0]) < float(da[lat_dim][-1]):
+                    da = da.isel({lat_dim: slice(None, None, -1)})
+
+                values = da.values
+                vmin = float(np.nanmin(values))
+                vmax = float(np.nanmax(values))
+                rows, cols = values.shape
+
+                # Replace NaN with None for JSON
+                flat = [None if np.isnan(v) else round(float(v), 4) for v in values.flatten()]
+
+                grid_payload = {
+                    "variable": var_name,
+                    "date": fetch_date.isoformat(),
+                    "min": round(vmin, 4),
+                    "max": round(vmax, 4),
+                    "shape": [rows, cols],
+                    "grid": {
+                        "lat_min": float(da[lat_dim].values[-1]),
+                        "lat_max": float(da[lat_dim].values[0]),
+                        "lon_min": float(da[lon_dim].values[0]),
+                        "lon_max": float(da[lon_dim].values[-1]),
+                        "resolution": round(1.0 * coarsen_factor * lat_res, 2),
+                    },
+                    "values": flat,
+                }
+
+                blob_path = f"streaming/{var_name}/{fetch_date.isoformat()}.json"
+                resp = vercel_blob.put(
+                    blob_path,
+                    json.dumps(grid_payload).encode("utf-8"),
+                    options={"access": "public"},
+                )
+                uploaded.append({
+                    "variable": var_name,
+                    "date": fetch_date.isoformat(),
+                    "url": resp.get("url", ""),
+                })
+                print(f"[blob] Uploaded {blob_path} → {resp.get('url', '?')}")
+
+            except Exception as exc:
+                print(f"[blob] Error processing {var_name}: {exc}")
+
+        ds.close()
+
+    # Build and upload globe manifest
+    if uploaded:
+        try:
+            _upload_globe_manifest(uploaded, retention_days, lag_days)
+        except Exception as exc:
+            print(f"[blob] Manifest upload failed: {exc}")
+
+    return {"uploaded": uploaded}
+
+
+def _upload_globe_manifest(
+    newly_uploaded: list[dict[str, str]],
+    retention_days: int,
+    lag_days: int,
+) -> None:
+    """Merge newly uploaded entries into the globe manifest on Vercel Blob."""
+    import vercel_blob
+
+    # Try to load existing manifest
+    existing_entries: list[dict[str, str]] = []
+    try:
+        blobs = vercel_blob.list()
+        for blob in blobs.get("blobs", []):
+            if blob.get("pathname") == "streaming/manifest.json":
+                import urllib.request
+                with urllib.request.urlopen(blob["url"]) as resp:
+                    existing = json.loads(resp.read().decode("utf-8"))
+                    existing_entries = existing.get("_entries", [])
+                break
+    except Exception:
+        pass
+
+    # Merge: replace entries with same variable+date, add new ones
+    entries_map = {f"{e['variable']}__{e['date']}": e for e in existing_entries}
+    for entry in newly_uploaded:
+        entries_map[f"{entry['variable']}__{entry['date']}"] = entry
+
+    # Prune entries outside the current window
+    window_start, window_end = compute_window(retention_days, lag_days)
+    entries = [
+        e for e in entries_map.values()
+        if window_start.isoformat() <= e["date"] <= window_end.isoformat()
+    ]
+
+    # Group by variable for the globe page
+    var_groups: dict[str, list] = {}
+    for e in entries:
+        var_groups.setdefault(e["variable"], []).append({"date": e["date"], "url": e["url"]})
+
+    globe_manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "variables": [
+            {"name": vname, "dates": sorted(dates, key=lambda d: d["date"])}
+            for vname, dates in sorted(var_groups.items())
+        ],
+        "_entries": entries,
+    }
+
+    vercel_blob.put(
+        "streaming/manifest.json",
+        json.dumps(globe_manifest, indent=2).encode("utf-8"),
+        options={"access": "public"},
+    )
+    print(f"[blob] Globe manifest updated with {len(entries)} entries")
+
+
 if __name__ == "__main__":
     main()
+
