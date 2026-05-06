@@ -114,11 +114,9 @@ function init() {
   controls.autoRotateSpeed = 0.25;
   controls.enablePan = false;
 
-  // Lights
-  scene.add(new THREE.AmbientLight(0x334466, 3));
-  const sun = new THREE.DirectionalLight(0xffeedd, 3);
-  sun.position.set(5, 3, 4);
-  scene.add(sun);
+  // Lights — uniform illumination so all sides of the globe are visible
+  scene.add(new THREE.AmbientLight(0xffffff, 4));
+  scene.add(new THREE.HemisphereLight(0xccddff, 0x444466, 2));
 
   createStarField();
   createEarth();
@@ -158,7 +156,8 @@ function createEarth() {
   const loader = new THREE.TextureLoader();
   const tex = loader.load('https://unpkg.com/three-globe/example/img/earth-night.jpg');
   tex.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05 });
+  // MeshBasicMaterial renders uniformly bright — no dark hemisphere
+  const mat = new THREE.MeshBasicMaterial({ map: tex });
   earthMesh = new THREE.Mesh(geo, mat);
   scene.add(earthMesh);
 }
@@ -247,7 +246,16 @@ async function loadGridForVariableDate(variable, dateStr) {
 async function loadCurrentGrid() {
   if (!currentVariable || dates.length === 0) return;
   const dateStr = dates[currentDateIdx];
-  const grid = await loadGridForVariableDate(currentVariable, dateStr);
+
+  // Check cache first (covers demo mode and previously loaded grids)
+  const cacheKey = `${currentVariable}__${dateStr}`;
+  let grid = gridCache[cacheKey];
+
+  // If not cached, try fetching from Blob
+  if (!grid) {
+    grid = await loadGridForVariableDate(currentVariable, dateStr);
+  }
+
   if (grid) {
     paintDataTexture(grid);
     updateLegend(grid);
@@ -256,40 +264,79 @@ async function loadCurrentGrid() {
 }
 
 // ── Demo Data ──────────────────────────────────────────────────
-function useDemoData() {
-  // Synthetic temperature-like gradient so the globe looks alive on first load
+const DEMO_VARS = [
+  { key: '2m_temperature',                      label: '2m Temperature (Demo)',      min: 220, max: 320, gen: (lat, lon, day) => 288 - Math.abs(lat)*1.1 + Math.sin(lon*0.08)*5 + Math.cos(lat*0.12+lon*0.05+day*0.3)*4 },
+  { key: 'river_discharge_in_the_last_24_hours', label: 'River Discharge (Demo)',     min: 0,   max: 5000, gen: (lat, lon, day) => Math.max(0, 1200 - Math.abs(lat)*25 + Math.sin(lon*0.06+day*0.5)*800 + Math.cos(lat*0.1)*500) },
+  { key: 'total_precipitation',                  label: 'Total Precipitation (Demo)', min: 0,   max: 0.05, gen: (lat, lon, day) => Math.max(0, 0.02 - Math.abs(lat)*0.0003 + Math.sin(lon*0.09+day*0.4)*0.012 + Math.cos(lat*0.15+day*0.2)*0.008) },
+];
+
+function buildDemoDates() {
+  const out = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i - 2);
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function generateDemoGrid(varDef, dateStr) {
   const w = 360, h = 181;
-  const values = new Array(w * h);
-  for (let lat = 0; lat < h; lat++) {
-    const latDeg = 90 - lat;
-    for (let lon = 0; lon < w; lon++) {
-      const lonDeg = -180 + lon;
-      // Base: warm equator, cold poles
-      let v = 288 - Math.abs(latDeg) * 1.1;
-      // Add some continental noise
-      v += Math.sin(lonDeg * 0.08) * 5 + Math.cos(latDeg * 0.12 + lonDeg * 0.05) * 4;
-      v += (Math.random() - 0.5) * 3;
-      values[lat * w + lon] = v;
+  const dayIdx = parseInt(dateStr.slice(-2), 10) || 0;
+  const values = new Array(h * w);
+  for (let r = 0; r < h; r++) {
+    const lat = 90 - r;
+    for (let c = 0; c < w; c++) {
+      const lon = -180 + c;
+      values[r * w + c] = varDef.gen(lat, lon, dayIdx);
     }
   }
-  const demoGrid = {
-    variable: '2m_temperature', date: 'demo',
-    min: 220, max: 320, shape: [h, w],
+  return {
+    variable: varDef.key, date: dateStr,
+    min: varDef.min, max: varDef.max, shape: [h, w],
     grid: { lat_min: -90, lat_max: 90, lon_min: -180, lon_max: 179, resolution: 1.0 },
     values,
   };
+}
 
-  currentVariable = '2m_temperature';
-  dates = ['demo'];
-  currentDateIdx = 0;
+function useDemoData() {
+  const demoDates = buildDemoDates();
 
-  varSelect.innerHTML = '<option value="2m_temperature">2m Temperature (Demo)</option>';
-  dateSlider.min = 0; dateSlider.max = 0; dateSlider.value = 0;
-  dateLabel.textContent = 'Demo Data';
+  // Build a fake manifest so loadCurrentGrid works via cache
+  manifest = { variables: [] };
+  DEMO_VARS.forEach(vd => {
+    const datEntries = demoDates.map(d => ({ date: d, url: '' }));
+    manifest.variables.push({ name: vd.key, dates: datEntries });
+    // Pre-cache all grids
+    demoDates.forEach(d => {
+      gridCache[`${vd.key}__${d}`] = generateDemoGrid(vd, d);
+    });
+  });
 
-  paintDataTexture(demoGrid);
-  updateLegend(demoGrid);
-  updateInfoBadge('2m_temperature', 'demo');
+  // Populate variable selector
+  varSelect.innerHTML = '';
+  DEMO_VARS.forEach(vd => {
+    const opt = document.createElement('option');
+    opt.value = vd.key;
+    opt.textContent = vd.label;
+    varSelect.appendChild(opt);
+  });
+
+  currentVariable = DEMO_VARS[0].key;
+  varSelect.value = currentVariable;
+  dates = demoDates;
+  currentDateIdx = dates.length - 1;
+
+  dateSlider.min = 0;
+  dateSlider.max = dates.length - 1;
+  dateSlider.value = currentDateIdx;
+  dateLabel.textContent = dates[currentDateIdx];
+
+  const grid = gridCache[`${currentVariable}__${dates[currentDateIdx]}`];
+  paintDataTexture(grid);
+  updateLegend(grid);
+  updateInfoBadge(currentVariable, dates[currentDateIdx]);
 }
 
 // ================================================================
