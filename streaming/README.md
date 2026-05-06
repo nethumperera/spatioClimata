@@ -1,25 +1,28 @@
-# Streaming Ingest (GloFAS, 7-day window)
+# Streaming Ingest (GloFAS, 7-day window — Incremental Daily)
 
-This folder contains a small ingestion script that keeps a sliding 7-day window of
-GloFAS data for global visualization. It fetches daily data, stores it locally, and
-writes a manifest describing the files and date range.
+This folder contains an ingestion script that maintains a sliding 7-day window of
+GloFAS data for global visualization. Each daily run fetches **only the newest day**
+and **deletes the day that just fell out** of the window.
 
-## What it does
+## How it works
 
-- Loads the Copernicus key from the .env file or environment variables.
-- Fetches a rolling 7-day window of daily GloFAS data (global).
-- Deletes old files before each run to keep storage small.
-- Writes `window_manifest.json` with metadata for the map client.
+1. Computes the newest day: `today − lag_days`.
+2. Computes the eviction day: `newest_day − retention_days`.
+3. Deletes any files for the eviction day.
+4. Fetches only the newest day from Copernicus.
+5. Writes `window_manifest.json` with metadata about the run.
+
+Each variable is processed in a separate run via the `--variable` flag, allowing
+parallel or staggered scheduling.
 
 ## Configuration
 
 Edit `config.json` to update:
-- `env_file`: path to the .env file with your API key
-- `variables`: variables to download (curated core set)
-- `grid`: not used for GloFAS (omit or leave unset)
-- `retention_days`: number of days to keep
-- `lag_days`: how many days behind "today" to avoid missing ERA5T data
-- `output_root`: where to store downloaded files
+- `env_file`: path to the .env file with your API key (or set `STREAMING_ENV_FILE`)
+- `variables`: master list of variables to download
+- `retention_days`: number of days in the sliding window (default: 7)
+- `lag_days`: how many days behind "today" to avoid missing data (default: 2)
+- `output_root`: where to store downloaded files (or set `STREAMING_OUTPUT_ROOT`)
 
 Environment overrides:
 - `STREAMING_ENV_FILE`
@@ -27,37 +30,52 @@ Environment overrides:
 - `STREAMING_RETENTION_DAYS`
 - `STREAMING_LAG_DAYS`
 
-## Run locally
+## CLI usage
 
-From the repo root:
+```bash
+# Fetch a single variable (incremental — one day)
+python streaming/ingest.py --variable river_discharge_in_the_last_24_hours
 
+# Fetch all variables (incremental — one day each)
+python streaming/ingest.py
+
+# Bootstrap: fetch the full 7-day window for all variables
+python streaming/ingest.py --full-window
 ```
-C:/Users/HP/Documents/Programming/code/Scripts/python.exe -m pip install -e .
-C:/Users/HP/Documents/Programming/code/Scripts/python.exe -m pip install -r streaming/requirements.txt
-C:/Users/HP/Documents/Programming/code/Scripts/python.exe streaming/ingest.py
+
+## Run locally (Windows)
+
+```powershell
+# Single variable
+.\streaming\run_ingest.ps1 -Variable river_discharge_in_the_last_24_hours
+
+# All variables sequentially
+.\streaming\run_ingest.ps1
 ```
 
-## Vercel deployment notes
+## Scheduling
 
-Vercel provides cron scheduling, but the filesystem is ephemeral. For production
-storage, plan to upload outputs to a durable store (for example Vercel Blob) or
-another object store your map can read from.
+### Primary: GitHub Actions (daily, per-variable)
 
-Recommended environment variables:
+The `.github/workflows/ingest.yml` workflow runs once daily at 06:00 UTC with a
+matrix strategy — one job per variable, serialised to respect CDS rate limits.
 
-- `SPATIOCLIMATA_API_KEY`
-- `STREAMING_OUTPUT_ROOT` (use `/tmp/streaming/data` on Vercel)
+You can also trigger it manually via `workflow_dispatch` for a specific variable
+or to bootstrap the full window.
 
-## Scheduling (every 2 hours)
+### Fallback: Vercel Cron (daily, all variables)
 
-Use Render Cron Jobs or Windows Task Scheduler. Example cron:
+`vercel.json` defines a single daily cron at 06:00 UTC that hits `/api/ingest`.
+The Vercel function processes all variables in one request (free tier allows only
+1 cron job, max 300 seconds).
 
-```
-0 */2 * * *
-```
+## Secrets required
+
+- `SPATIOCLIMATA_API_KEY` — set as a GitHub Actions secret and/or Vercel env var.
 
 ## Notes
 
-- GloFAS availability can lag by 1-3 days. Adjust `lag_days` if you see missing data.
+- GloFAS availability can lag by 1–3 days. Adjust `lag_days` if you see missing data.
 - The manifest can be used by your map service to discover the latest window.
 - For higher throughput, move tiles to object storage.
+- Use `--full-window` for the first run to backfill the entire 7-day window.

@@ -12,7 +12,6 @@
   "output_root": "./data",
   "retention_days": 7,
   "lag_days": 2,
-  "reset_on_start": true,
   "extra_params": {
     "product_type": "intermediate",
     "hydrological_model": "lisflood"
