@@ -28,6 +28,8 @@ Thumbs.db
 data/
 outputs/
 .cache/
+streaming/data/
+.vercel/
 
 # Dask temp artifacts
 dask-worker-space/

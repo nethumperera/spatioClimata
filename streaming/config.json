@@ -1,0 +1,20 @@
+{
+  "env_file": "",
+  "dataset": "cems-glofas-historical",
+  "variables": [
+    "river_discharge_in_the_last_24_hours",
+    "soil_wetness_index_root_zone",
+    "runoff_water_equivalent"
+  ],
+  "frequency": "daily",
+  "merge_strategy": "none",
+  "area": [90, -180, -90, 180],
+  "output_root": "./data",
+  "retention_days": 7,
+  "lag_days": 2,
+  "reset_on_start": true,
+  "extra_params": {
+    "product_type": "intermediate",
+    "hydrological_model": "lisflood"
+  }
+}

@@ -128,6 +128,8 @@ def build_default_catalog() -> DatasetCatalog:
             },
             known_variables=(
                 "river_discharge_in_the_last_24_hours",
+                "soil_wetness_index_root_zone",
+                "runoff_water_equivalent",
             ),
         )
     )
