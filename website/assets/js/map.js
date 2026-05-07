@@ -4,7 +4,10 @@
  */
 
 // ── Configuration ──────────────────────────────────────────────
-const MANIFEST_URL = '/api/manifest';
+// Use global config (loaded from config.js)
+const MANIFEST_URL = window.SPATIOCLIMATA_CONFIG 
+  ? window.SPATIOCLIMATA_CONFIG.getApiUrl('/api/manifest')
+  : 'https://spatioclimata.vercel.app/api/manifest';
 const VIRIDIS_COLORMAP = [
   '#440154', '#482475', '#3e4a89', '#31688e', '#26828e',
   '#35b779', '#6ece58', '#b5de2b', '#fde724'
@@ -40,9 +43,30 @@ async function init() {
   
   try {
     // Fetch manifest
-    const response = await fetch(MANIFEST_URL);
+    const response = await fetch(MANIFEST_URL, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      mode: 'cors',
+      cache: 'no-cache',
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      throw new Error(`Expected JSON but got ${contentType || 'unknown'}: ${text.substring(0, 100)}`);
+    }
+
     manifest = await response.json();
     console.log('Manifest loaded:', manifest);
+
+    // Check if manifest indicates error
+    if (manifest.status === 'error') {
+      throw new Error(`Server error: ${manifest.message}`);
+    }
 
     // Initialize map
     initMap();
@@ -61,7 +85,8 @@ async function init() {
     updateInfo('Ready');
   } catch (error) {
     console.error('Failed to load manifest:', error);
-    updateInfo('Error loading data: ' + error.message);
+    const msg = `Error: ${error.message}<br/>URL: ${MANIFEST_URL}<br/>Make sure VERCEL_API_URL is set correctly in config.js`;
+    updateInfo(msg);
     hideLoading();
   }
 }
@@ -260,7 +285,12 @@ function togglePlayback() {
 }
 
 function updateInfo(text) {
-  infoText.textContent = text;
+  // Support both plain text and HTML for error messages
+  if (text.includes('<')) {
+    infoText.innerHTML = text;
+  } else {
+    infoText.textContent = text;
+  }
 }
 
 function showLoading() {
