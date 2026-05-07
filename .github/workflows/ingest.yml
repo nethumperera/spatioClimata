@@ -2,8 +2,8 @@ name: streaming-ingest
 
 on:
   schedule:
-    # Daily at 03:55 UTC (9:25 AM IST)
-    - cron: "55 3 * * *"
+    # Daily at 04:00 UTC (9:30 AM IST)
+    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
       variable:
