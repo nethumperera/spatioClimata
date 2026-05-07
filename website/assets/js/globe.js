@@ -1,23 +1,10 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
 /* ================================================================
-   spatioClimata — 3D Interactive Globe
-   Renders climate data as a heatmap texture on a Three.js globe.
-   Data is loaded from Vercel Blob (manifest + per-variable JSON grids).
+   spatioClimata — 2D Interactive Map (Leaflet / OpenStreetMap)
    ================================================================ */
 
 // ── Configuration ──────────────────────────────────────────────
-const EARTH_RADIUS = 1;
-const DATA_RADIUS = 1.004;
-const STAR_COUNT = 2800;
-const DATA_CANVAS_W = 720;
-const DATA_CANVAS_H = 361;
-
-// Vercel Blob manifest URL — updated by the ingest pipeline
 const MANIFEST_URL = 'https://kndyu62zzumvdajy.public.blob.vercel-storage.com/streaming/manifest.json';
 
-// ── Variable Metadata ──────────────────────────────────────────
 const VAR_META = {
   'river_discharge_in_the_last_24_hours': { label: 'River Discharge (24h)', unit: 'm³/s', range: [0, 5000] },
   'soil_wetness_index_root_zone':        { label: 'Soil Wetness Index',     unit: '–',    range: [0, 1] },
@@ -35,7 +22,6 @@ const VAR_META = {
   '10m_v_component_of_wind':             { label: '10m V-Wind',            unit: 'm/s',  range: [-20, 20] },
 };
 
-// ── Turbo Colormap (Google) ────────────────────────────────────
 const TURBO_SRGB = [
   [0.19,0.07,0.23],[0.23,0.17,0.52],[0.25,0.29,0.76],[0.20,0.44,0.90],
   [0.11,0.57,0.94],[0.06,0.68,0.88],[0.14,0.78,0.71],[0.31,0.85,0.50],
@@ -56,12 +42,7 @@ function turboColor(t) {
   ];
 }
 
-// ── Three.js Globals ───────────────────────────────────────────
-let scene, camera, renderer, controls;
-let earthMesh, dataOverlayMesh;
-let dataCanvas, dataCtx, dataTexture;
-
-// ── State ──────────────────────────────────────────────────────
+let map, overlayLayer;
 let manifest = null;
 let currentVariable = null;
 let dates = [];
@@ -70,9 +51,6 @@ let isPlaying = false;
 let playInterval = null;
 let gridCache = {};
 
-// ── DOM refs ───────────────────────────────────────────────────
-const container   = document.getElementById('globe-container');
-const canvas      = document.getElementById('globe-canvas');
 const varSelect   = document.getElementById('variable-select');
 const dateSlider  = document.getElementById('date-slider');
 const dateLabel   = document.getElementById('date-label');
@@ -81,121 +59,34 @@ const playStatus  = document.getElementById('playback-status');
 const legendMin   = document.getElementById('legend-min');
 const legendMax   = document.getElementById('legend-max');
 const legendUnit  = document.getElementById('legend-unit');
-const gradientBar = document.querySelector('.gradient-bar');
 const infoText    = document.getElementById('info-text');
 const loadingEl   = document.getElementById('loading-overlay');
 
-// ================================================================
-//  INIT
-// ================================================================
-function init() {
-  // Renderer
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(container.clientWidth, container.clientHeight);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+function initMap() {
+  map = L.map('map', {
+    center: [0, 0],
+    zoom: 2,
+    worldCopyJump: true,
+  });
 
-  // Scene
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x030614);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    noWrap: false
+  }).addTo(map);
 
-  // Camera
-  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-  camera.position.set(0, 0, 4.5);
-
-  // Controls
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
-  controls.minDistance = 1;
-  controls.maxDistance = 10;
-  controls.enableRotate = false; // Disable 3D rotation, just pan/zoom
-  controls.enablePan = true;
-
-  // Lights — uniform illumination so all sides of the globe are visible
-  scene.add(new THREE.AmbientLight(0xffffff, 4));
-  scene.add(new THREE.HemisphereLight(0xccddff, 0x444466, 2));
-
-  createStarField();
-  createEarth();
-  createAtmosphere();
-  createDataOverlay();
-
-  window.addEventListener('resize', onResize);
   setupUI();
-  animate();
   loadData();
 }
 
-// ================================================================
-//  SCENE OBJECTS
-// ================================================================
-function createStarField() {
-  const positions = new Float32Array(STAR_COUNT * 3);
-  const sizes = new Float32Array(STAR_COUNT);
-  for (let i = 0; i < STAR_COUNT; i++) {
-    const r = 15 + Math.random() * 35;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    positions[i * 3 + 2] = r * Math.cos(phi);
-    sizes[i] = 0.3 + Math.random() * 1.2;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.04, sizeAttenuation: true, transparent: true, opacity: 0.85 });
-  scene.add(new THREE.Points(geo, mat));
-}
-
-function createEarth() {
-  const geo = new THREE.PlaneGeometry(2 * Math.PI * EARTH_RADIUS, Math.PI * EARTH_RADIUS, 72, 72);
-  const loader = new THREE.TextureLoader();
-  const tex = loader.load('https://unpkg.com/three-globe/example/img/earth-night.jpg');
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshBasicMaterial({ map: tex });
-  earthMesh = new THREE.Mesh(geo, mat);
-  scene.add(earthMesh);
-}
-
-function createAtmosphere() {
-  // Disabled for 2D map view
-}
-
-function createDataOverlay() {
-  dataCanvas = document.createElement('canvas');
-  dataCanvas.width = DATA_CANVAS_W;
-  dataCanvas.height = DATA_CANVAS_H;
-  dataCtx = dataCanvas.getContext('2d');
-
-  dataTexture = new THREE.CanvasTexture(dataCanvas);
-  dataTexture.minFilter = THREE.LinearFilter;
-  dataTexture.magFilter = THREE.LinearFilter;
-
-  const geo = new THREE.PlaneGeometry(2 * Math.PI * EARTH_RADIUS, Math.PI * EARTH_RADIUS, 72, 72);
-  const mat = new THREE.MeshBasicMaterial({
-    map: dataTexture, transparent: true, opacity: 0.72,
-    side: THREE.FrontSide, depthWrite: false, blending: THREE.NormalBlending,
-  });
-  dataOverlayMesh = new THREE.Mesh(geo, mat);
-  dataOverlayMesh.position.z = 0.01; // offset slightly in Z to prevent z-fighting
-  scene.add(dataOverlayMesh);
-}
-
-// ================================================================
-//  DATA LOADING
-// ================================================================
 async function loadData() {
   try {
     const resp = await fetch(MANIFEST_URL);
-    if (!resp.ok) throw new Error(`Manifest fetch failed: ${resp.status}`);
+    if (!resp.ok) throw new Error(`Manifest failed: ${resp.status}`);
     manifest = await resp.json();
     populateUI();
     await loadCurrentGrid();
   } catch (err) {
-    console.warn('Manifest not available, using demo data:', err.message);
+    console.warn('Manifest not found, creating Demo Data...', err);
     useDemoData();
   }
   loadingEl.classList.add('hidden');
@@ -224,35 +115,30 @@ async function loadCurrentGrid() {
   if (!currentVariable || dates.length === 0) return;
   const dateStr = dates[currentDateIdx];
 
-  // Check cache first (covers demo mode and previously loaded grids)
-  const cacheKey = `${currentVariable}__${dateStr}`;
-  let grid = gridCache[cacheKey];
-
-  // If not cached, try fetching from Blob
+  let grid = gridCache[`${currentVariable}__${dateStr}`];
   if (!grid) {
     grid = await loadGridForVariableDate(currentVariable, dateStr);
   }
 
   if (grid) {
-    paintDataTexture(grid);
+    paintDataLayer(grid);
     updateLegend(grid);
     updateInfoBadge(currentVariable, dateStr);
   }
 }
 
-// ── Demo Data ──────────────────────────────────────────────────
+// ── Demo Data Fallback ────────────────────────────────
 const DEMO_VARS = [
-  { key: '2m_temperature',                      label: '2m Temperature (Demo)',      min: 220, max: 320, gen: (lat, lon, day) => 288 - Math.abs(lat)*1.1 + Math.sin(lon*0.08)*5 + Math.cos(lat*0.12+lon*0.05+day*0.3)*4 },
-  { key: 'river_discharge_in_the_last_24_hours', label: 'River Discharge (Demo)',     min: 0,   max: 5000, gen: (lat, lon, day) => Math.max(0, 1200 - Math.abs(lat)*25 + Math.sin(lon*0.06+day*0.5)*800 + Math.cos(lat*0.1)*500) },
-  { key: 'total_precipitation',                  label: 'Total Precipitation (Demo)', min: 0,   max: 0.05, gen: (lat, lon, day) => Math.max(0, 0.02 - Math.abs(lat)*0.0003 + Math.sin(lon*0.09+day*0.4)*0.012 + Math.cos(lat*0.15+day*0.2)*0.008) },
+  { key: '2m_temperature', label: '2m Temperature (Demo)', min: 220, max: 320, gen: (lat, lon, day) => 288 - Math.abs(lat)*1.1 + Math.sin(lon*0.08)*5 + Math.cos(lat*0.12+lon*0.05+day*0.3)*4 },
+  { key: 'river_discharge_in_the_last_24_hours', label: 'River Discharge (Demo)', min: 0, max: 5000, gen: (lat, lon, day) => Math.max(0, 1200 - Math.abs(lat)*25 + Math.sin(lon*0.06+day*0.5)*800 + Math.cos(lat*0.1)*500) },
+  { key: 'total_precipitation', label: 'Total Precipitation (Demo)', min: 0, max: 0.05, gen: (lat, lon, day) => Math.max(0, 0.02 - Math.abs(lat)*0.0003 + Math.sin(lon*0.09+day*0.4)*0.012 + Math.cos(lat*0.15+day*0.2)*0.008) },
 ];
 
 function buildDemoDates() {
   const out = [];
   const now = new Date();
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i - 2);
+    const d = new Date(now); d.setDate(d.getDate() - i - 2);
     out.push(d.toISOString().slice(0, 10));
   }
   return out;
@@ -279,130 +165,101 @@ function generateDemoGrid(varDef, dateStr) {
 
 function useDemoData() {
   const demoDates = buildDemoDates();
-
-  // Build a fake manifest so loadCurrentGrid works via cache
   manifest = { variables: [] };
   DEMO_VARS.forEach(vd => {
     const datEntries = demoDates.map(d => ({ date: d, url: '' }));
     manifest.variables.push({ name: vd.key, dates: datEntries });
-    // Pre-cache all grids
-    demoDates.forEach(d => {
-      gridCache[`${vd.key}__${d}`] = generateDemoGrid(vd, d);
-    });
+    demoDates.forEach(d => { gridCache[`${vd.key}__${d}`] = generateDemoGrid(vd, d); });
   });
 
-  // Populate variable selector
   varSelect.innerHTML = '';
   DEMO_VARS.forEach(vd => {
     const opt = document.createElement('option');
-    opt.value = vd.key;
-    opt.textContent = vd.label;
+    opt.value = vd.key; opt.textContent = vd.label;
     varSelect.appendChild(opt);
   });
 
   currentVariable = DEMO_VARS[0].key;
-  varSelect.value = currentVariable;
   dates = demoDates;
   currentDateIdx = dates.length - 1;
-
-  dateSlider.min = 0;
   dateSlider.max = dates.length - 1;
   dateSlider.value = currentDateIdx;
-  dateLabel.textContent = dates[currentDateIdx];
-
-  const grid = gridCache[`${currentVariable}__${dates[currentDateIdx]}`];
-  paintDataTexture(grid);
-  updateLegend(grid);
-  updateInfoBadge(currentVariable, dates[currentDateIdx]);
+  
+  loadCurrentGrid();
 }
 
-// ================================================================
-//  DATA → TEXTURE
-// ================================================================
-function paintDataTexture(grid) {
+function paintDataLayer(grid) {
   const { values, shape, min, max } = grid;
   const [rows, cols] = shape;
   const range = max - min || 1;
 
-  // Scale canvas to data dimensions
-  dataCanvas.width = cols * 2;
-  dataCanvas.height = rows * 2;
-  const imgData = dataCtx.createImageData(cols * 2, rows * 2);
+  const canvas = document.createElement('canvas');
+  canvas.width = cols; canvas.height = rows;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(cols, rows);
   const px = imgData.data;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const val = values[r * cols + c];
-      const isNaN = val === null || val === undefined || Number.isNaN(val);
-
-      let R = 0, G = 0, B = 0, A = 0;
-      if (!isNaN) {
-        const t = Math.max(0, Math.min(1, (val - min) / range));
-        const [cr, cg, cb] = turboColor(t);
-        R = Math.round(cr * 255);
-        G = Math.round(cg * 255);
-        B = Math.round(cb * 255);
-        A = 200;
+      const idx = (r * cols + c) * 4;
+      if (val === null || val === undefined || Number.isNaN(val) || val <= min) {
+         px[idx+3] = 0; // transparent
+         continue;
       }
-
-      // 2x upscale for smoothness
-      for (let dr = 0; dr < 2; dr++) {
-        for (let dc = 0; dc < 2; dc++) {
-          const pr = r * 2 + dr;
-          const pc = c * 2 + dc;
-          const idx = (pr * cols * 2 + pc) * 4;
-          px[idx] = R; px[idx + 1] = G; px[idx + 2] = B; px[idx + 3] = A;
-        }
-      }
+      
+      const t = Math.max(0, Math.min(1, (val - min) / range));
+      const [cr, cg, cb] = turboColor(t);
+      px[idx] = Math.round(cr * 255);
+      px[idx + 1] = Math.round(cg * 255);
+      px[idx + 2] = Math.round(cb * 255);
+      px[idx + 3] = 160; // 60% opacity
     }
   }
 
-  dataCtx.putImageData(imgData, 0, 0);
-  dataTexture.needsUpdate = true;
+  ctx.putImageData(imgData, 0, 0);
+
+  const bounds = [[grid.grid.lat_min || -90, grid.grid.lon_min || -180], [grid.grid.lat_max || 90, grid.grid.lon_max || 180]];
+  
+  if (overlayLayer) {
+    overlayLayer.setUrl(canvas.toDataURL());
+  } else {
+    overlayLayer = L.imageOverlay(canvas.toDataURL(), bounds).addTo(map);
+  }
 }
 
-// ================================================================
-//  UI
-// ================================================================
 function populateUI() {
-  if (!manifest || !manifest.variables) return;
-
   varSelect.innerHTML = '';
   manifest.variables.forEach(v => {
     const meta = VAR_META[v.name] || { label: v.name };
     const opt = document.createElement('option');
-    opt.value = v.name;
-    opt.textContent = meta.label;
+    opt.value = v.name; opt.textContent = meta.label;
     varSelect.appendChild(opt);
   });
-
-  currentVariable = manifest.variables[0]?.name;
-  varSelect.value = currentVariable;
-
-  rebuildDateSlider();
-}
-
-function rebuildDateSlider() {
-  if (!manifest || !currentVariable) return;
-  const entry = manifest.variables.find(v => v.name === currentVariable);
-  dates = entry?.dates?.map(d => d.date).sort() || [];
-  currentDateIdx = Math.max(0, dates.length - 1);
-  dateSlider.min = 0;
-  dateSlider.max = Math.max(0, dates.length - 1);
-  dateSlider.value = currentDateIdx;
-  dateLabel.textContent = dates[currentDateIdx] || '—';
+  if (manifest.variables.length > 0) {
+    currentVariable = manifest.variables[0].name;
+    dates = manifest.variables[0].dates.map(d => d.date);
+    currentDateIdx = dates.length - 1;
+    dateSlider.max = dates.length - 1;
+    dateSlider.value = currentDateIdx;
+  }
 }
 
 function setupUI() {
-  varSelect.addEventListener('change', async () => {
-    currentVariable = varSelect.value;
-    rebuildDateSlider();
+  varSelect.addEventListener('change', async (e) => {
+    currentVariable = e.target.value;
+    const vDef = manifest?.variables?.find(v => v.name === currentVariable);
+    if (vDef) {
+       dates = vDef.dates.map(d => d.date);
+       currentDateIdx = dates.length - 1;
+       dateSlider.max = dates.length - 1;
+       dateSlider.value = currentDateIdx;
+    }
     await loadCurrentGrid();
   });
 
   dateSlider.addEventListener('input', async () => {
     currentDateIdx = parseInt(dateSlider.value);
-    dateLabel.textContent = dates[currentDateIdx] || '—';
     await loadCurrentGrid();
   });
 
@@ -418,7 +275,6 @@ function togglePlayback() {
     playInterval = setInterval(async () => {
       currentDateIdx = (currentDateIdx + 1) % dates.length;
       dateSlider.value = currentDateIdx;
-      dateLabel.textContent = dates[currentDateIdx] || '—';
       await loadCurrentGrid();
     }, 1500);
   } else {
@@ -432,37 +288,15 @@ function updateLegend(grid) {
   const meta = VAR_META[grid.variable] || {};
   const lo = grid.min ?? meta.range?.[0] ?? 0;
   const hi = grid.max ?? meta.range?.[1] ?? 100;
-  legendMin.textContent = formatValue(lo);
-  legendMax.textContent = formatValue(hi);
+  legendMin.textContent = (hi > 1000) ? lo.toFixed(0) : lo.toPrecision(3);
+  legendMax.textContent = (hi > 1000) ? hi.toFixed(0) : hi.toPrecision(3);
   if (legendUnit) legendUnit.textContent = meta.unit || '';
 }
 
 function updateInfoBadge(variable, dateStr) {
   const meta = VAR_META[variable] || { label: variable };
-  const dateDisplay = dateStr === 'demo' ? 'Demo Data' : dateStr;
-  infoText.textContent = `${meta.label}  ·  ${dateDisplay}`;
+  infoText.textContent = `${meta.label}  ·  ${dateStr}`;
+  dateLabel.textContent = dateStr;
 }
 
-function formatValue(v) {
-  if (Math.abs(v) >= 1000) return v.toFixed(0);
-  if (Math.abs(v) >= 1) return v.toFixed(1);
-  return v.toPrecision(3);
-}
-
-// ================================================================
-//  ANIMATION LOOP
-// ================================================================
-function animate() {
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene, camera);
-}
-
-function onResize() {
-  camera.aspect = container.clientWidth / container.clientHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(container.clientWidth, container.clientHeight);
-}
-
-// ── Start ──────────────────────────────────────────────────────
-init();
+initMap();

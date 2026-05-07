@@ -21,6 +21,7 @@
     <link rel="icon" type="image/png" href="../assets/images/logo.png" />
     <link rel="stylesheet" href="../assets/css/style.css" />
     <link rel="stylesheet" href="../assets/css/globe.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   </head>
   <body data-globe-page data-theme="dark">
     <header class="site-header">
@@ -41,10 +42,10 @@
     </header>
 
     <div id="globe-container">
-      <canvas id="globe-canvas"></canvas>
+      <div id="map" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1;"></div>
 
       <!-- Control Panel -->
-      <div id="globe-controls" class="glass-panel">
+      <div id="globe-controls" class="glass-panel" style="z-index: 1000;">
         <h3><i class="bi bi-broadcast"></i> Live Climate Data</h3>
 
         <div class="control-group">
@@ -77,26 +78,19 @@
       </div>
 
       <!-- Info Badge -->
-      <div id="info-badge" class="glass-panel">
+      <div id="info-badge" class="glass-panel" style="z-index: 1000;">
         <span class="live-dot"></span>
         <span id="info-text">Initializing…</span>
       </div>
 
       <!-- Loading Overlay -->
-      <div id="loading-overlay">
+      <div id="loading-overlay" style="z-index: 2000;">
         <div class="spinner"></div>
         <p>Loading climate data…</p>
       </div>
     </div>
 
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
-      }
-    }
-    </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script type="module" src="../assets/js/globe.js"></script>
   </body>
 </html>
