@@ -2,8 +2,8 @@ name: streaming-ingest
 
 on:
   schedule:
-    # Daily at 06:00 UTC — matrix fans out one job per variable
-    - cron: "0 6 * * *"
+    # Daily at 03:55 UTC (9:25 AM IST)
+    - cron: "55 3 * * *"
   workflow_dispatch:
     inputs:
       variable:

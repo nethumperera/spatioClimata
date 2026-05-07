@@ -102,17 +102,16 @@ function init() {
 
   // Camera
   camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-  camera.position.set(0, 0.4, 2.8);
+  camera.position.set(0, 0, 4.5);
 
   // Controls
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.06;
-  controls.minDistance = 1.25;
-  controls.maxDistance = 6;
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.25;
-  controls.enablePan = false;
+  controls.dampingFactor = 0.05;
+  controls.minDistance = 1;
+  controls.maxDistance = 10;
+  controls.enableRotate = false; // Disable 3D rotation, just pan/zoom
+  controls.enablePan = true;
 
   // Lights — uniform illumination so all sides of the globe are visible
   scene.add(new THREE.AmbientLight(0xffffff, 4));
@@ -152,40 +151,17 @@ function createStarField() {
 }
 
 function createEarth() {
-  const geo = new THREE.SphereGeometry(EARTH_RADIUS, 72, 72);
+  const geo = new THREE.PlaneGeometry(2 * Math.PI * EARTH_RADIUS, Math.PI * EARTH_RADIUS, 72, 72);
   const loader = new THREE.TextureLoader();
   const tex = loader.load('https://unpkg.com/three-globe/example/img/earth-night.jpg');
   tex.colorSpace = THREE.SRGBColorSpace;
-  // MeshBasicMaterial renders uniformly bright — no dark hemisphere
   const mat = new THREE.MeshBasicMaterial({ map: tex });
   earthMesh = new THREE.Mesh(geo, mat);
   scene.add(earthMesh);
 }
 
 function createAtmosphere() {
-  const vertSrc = `
-    varying vec3 vNormal;
-    varying vec3 vPosition;
-    void main(){
-      vNormal = normalize(normalMatrix * normal);
-      vPosition = (modelViewMatrix * vec4(position,1.0)).xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-    }`;
-  const fragSrc = `
-    varying vec3 vNormal;
-    varying vec3 vPosition;
-    void main(){
-      vec3 viewDir = normalize(-vPosition);
-      float rim = 1.0 - max(dot(viewDir, vNormal), 0.0);
-      rim = pow(rim, 3.0) * 1.4;
-      gl_FragColor = vec4(0.35, 0.65, 1.0, rim * 0.55);
-    }`;
-  const geo = new THREE.SphereGeometry(EARTH_RADIUS * 1.025, 64, 64);
-  const mat = new THREE.ShaderMaterial({
-    vertexShader: vertSrc, fragmentShader: fragSrc,
-    side: THREE.BackSide, transparent: true, depthWrite: false,
-  });
-  scene.add(new THREE.Mesh(geo, mat));
+  // Disabled for 2D map view
 }
 
 function createDataOverlay() {
@@ -198,12 +174,13 @@ function createDataOverlay() {
   dataTexture.minFilter = THREE.LinearFilter;
   dataTexture.magFilter = THREE.LinearFilter;
 
-  const geo = new THREE.SphereGeometry(DATA_RADIUS, 72, 72);
+  const geo = new THREE.PlaneGeometry(2 * Math.PI * EARTH_RADIUS, Math.PI * EARTH_RADIUS, 72, 72);
   const mat = new THREE.MeshBasicMaterial({
     map: dataTexture, transparent: true, opacity: 0.72,
     side: THREE.FrontSide, depthWrite: false, blending: THREE.NormalBlending,
   });
   dataOverlayMesh = new THREE.Mesh(geo, mat);
+  dataOverlayMesh.position.z = 0.01; // offset slightly in Z to prevent z-fighting
   scene.add(dataOverlayMesh);
 }
 
