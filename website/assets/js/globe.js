@@ -67,6 +67,8 @@ function initMap() {
     center: [0, 0],
     zoom: 2,
     worldCopyJump: true,
+    minZoom: 2,
+    maxBounds: [[-90, -180], [90, 180]]
   });
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -151,14 +153,15 @@ function generateDemoGrid(varDef, dateStr) {
   for (let r = 0; r < h; r++) {
     const lat = 90 - r;
     for (let c = 0; c < w; c++) {
-      const lon = -180 + c;
+      let lon = -180 + c;
+      if (lon >= 180) lon -= 360;
       values[r * w + c] = varDef.gen(lat, lon, dayIdx);
     }
   }
   return {
     variable: varDef.key, date: dateStr,
     min: varDef.min, max: varDef.max, shape: [h, w],
-    grid: { lat_min: -90, lat_max: 90, lon_min: -180, lon_max: 179, resolution: 1.0 },
+    grid: { lat_min: -90, lat_max: 90, lon_min: -180, lon_max: 180, resolution: 1.0 },
     values,
   };
 }
@@ -199,10 +202,15 @@ function paintDataLayer(grid) {
   const imgData = ctx.createImageData(cols, rows);
   const px = imgData.data;
 
+  // Process data, correcting for longitude 0 to 360 if necessary
+  const is0to360 = (grid.grid.lon_max > 180);
+  
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
+      // If data is [0, 360], shift columns so data matches [-180, 180] bounds mapping
+      const targetC = is0to360 ? ((c + Math.floor(cols / 2)) % cols) : c;
       const val = values[r * cols + c];
-      const idx = (r * cols + c) * 4;
+      const idx = (r * cols + targetC) * 4;
       if (val === null || val === undefined || Number.isNaN(val) || val <= min) {
          px[idx+3] = 0; // transparent
          continue;
@@ -219,9 +227,14 @@ function paintDataLayer(grid) {
 
   ctx.putImageData(imgData, 0, 0);
 
-  const bounds = [[grid.grid.lat_min || -90, grid.grid.lon_min || -180], [grid.grid.lat_max || 90, grid.grid.lon_max || 180]];
+  // Notice bounds: lat limits changed to [-85.0511, 85.0511] to match Web Mercator 
+  const lat_min = grid.grid.lat_min ?? -90;
+  const lat_max = grid.grid.lat_max ?? 90;
+  // Always bound overlay at [-180, 180] standard OSM bounds now that px cols are wrapped
+  const bounds = [[Math.max(-85.0511, lat_min), -180], [Math.min(85.0511, lat_max), 180]];
   
   if (overlayLayer) {
+    overlayLayer.setBounds(bounds);
     overlayLayer.setUrl(canvas.toDataURL());
   } else {
     overlayLayer = L.imageOverlay(canvas.toDataURL(), bounds).addTo(map);
