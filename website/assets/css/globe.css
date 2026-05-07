@@ -308,3 +308,221 @@ input[type="range"]::-moz-range-thumb {
     justify-content: center;
   }
 }
+
+/* ===== Leaflet Map Overrides ===== */
+body[data-globe-page] {
+  --border: rgba(255,255,255,0.1);
+}
+
+#map-container {
+  margin-top: 60px;
+}
+
+#map {
+  background: #030614 !important;
+}
+
+.leaflet-container {
+  background: #030614 !important;
+  font-family: inherit;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  border-radius: 8px !important;
+  background: rgba(8, 16, 32, 0.55) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  backdrop-filter: blur(18px);
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  background: rgba(64,185,160,0.1) !important;
+  color: #40b9a0 !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  font-weight: bold !important;
+  transition: background 0.2s;
+}
+
+.leaflet-control-zoom-in:hover,
+.leaflet-control-zoom-out:hover {
+  background: rgba(64,185,160,0.25) !important;
+}
+
+.leaflet-attribution-flag {
+  display: none !important;
+}
+
+/* ===== Map Controls Panel ===== */
+#map-controls {
+  padding: 20px;
+}
+
+#map-controls h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e6f2eb;
+}
+
+#map-controls h3 i {
+  color: #40b9a0;
+}
+
+#map-controls .control-group {
+  margin-bottom: 14px;
+}
+
+#map-controls label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #a7b9b0;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+#variable-select {
+  width: 100%;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: #e6f2eb;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+#variable-select:focus {
+  border-color: #40b9a0;
+}
+
+#variable-select option {
+  background: #101a28;
+  color: #e6f2eb;
+}
+
+#date-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.12);
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#date-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #40b9a0;
+  border: 2px solid #030614;
+  box-shadow: 0 0 10px rgba(64,185,160,0.5);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+#date-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+#date-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #40b9a0;
+  border: 2px solid #030614;
+  cursor: pointer;
+}
+
+#play-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(64,185,160,0.15);
+  color: #40b9a0;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.15s;
+  padding: 0;
+}
+
+#play-btn:hover {
+  background: rgba(64,185,160,0.3);
+  transform: scale(1.08);
+}
+
+#date-display {
+  text-align: center;
+  margin-top: 8px;
+}
+
+#date-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #40b9a0;
+}
+
+#color-legend {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+#color-legend strong {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+  color: #e6f2eb;
+}
+
+#var-unit {
+  display: block;
+  font-size: 0.75rem;
+  color: #a7b9b0;
+  margin-top: 2px;
+}
+
+.gradient-bar {
+  height: 20px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+#info-panel {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  font-size: 0.85em;
+}
+
+#info-panel .live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #4ade80;
+  border-radius: 50%;
+  margin-right: 8px;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+#info-text {
+  color: #a7b9b0;
+}
