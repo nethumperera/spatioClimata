@@ -5,7 +5,7 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api?variable=soil_wetness_index_root_zone",
+      "path": "/api?variable=soil_wetness_index",
       "schedule": "0 4 * * *"
     },
     {

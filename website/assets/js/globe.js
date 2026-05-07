@@ -7,7 +7,7 @@ const MANIFEST_URL = 'https://kndyu62zzumvdajy.public.blob.vercel-storage.com/st
 
 const VAR_META = {
   'river_discharge_in_the_last_24_hours': { label: 'River Discharge (24h)', unit: 'm³/s', range: [0, 5000] },
-  'soil_wetness_index_root_zone':        { label: 'Soil Wetness Index',     unit: '–',    range: [0, 1] },
+  'soil_wetness_index':                  { label: 'Soil Wetness Index',     unit: '–',    range: [0, 1] },
   'runoff_water_equivalent':             { label: 'Runoff Water Equiv.',    unit: 'kg/m²', range: [0, 50] },
   '2m_temperature':                      { label: '2m Temperature',        unit: 'K',    range: [220, 320] },
   'total_precipitation':                 { label: 'Total Precipitation',   unit: 'm',    range: [0, 0.05] },
