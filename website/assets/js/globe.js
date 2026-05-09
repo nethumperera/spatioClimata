@@ -6,20 +6,57 @@
 const MANIFEST_URL = 'https://kndyu62zzumvdajy.public.blob.vercel-storage.com/streaming/manifest.json';
 
 const VAR_META = {
-  'river_discharge_in_the_last_24_hours': { label: 'River Discharge (24h)', unit: 'm³/s', range: [0, 5000] },
-  'soil_wetness_index':                  { label: 'Soil Wetness Index',     unit: '–',    range: [0, 1] },
-  'runoff_water_equivalent':             { label: 'Runoff Water Equiv.',    unit: 'kg/m²', range: [0, 50] },
-  '2m_temperature':                      { label: '2m Temperature',        unit: 'K',    range: [220, 320] },
-  'total_precipitation':                 { label: 'Total Precipitation',   unit: 'm',    range: [0, 0.05] },
-  'surface_runoff':                      { label: 'Surface Runoff',        unit: 'm',    range: [0, 0.01] },
-  'sub_surface_runoff':                  { label: 'Sub-surface Runoff',    unit: 'm',    range: [0, 0.005] },
-  'volumetric_soil_water_layer_1':       { label: 'Soil Water Layer 1',    unit: 'm³/m³', range: [0, 0.5] },
-  'potential_evaporation':               { label: 'Potential Evaporation', unit: 'm',    range: [-0.01, 0] },
-  'evaporation':                         { label: 'Evaporation',           unit: 'm',    range: [-0.01, 0] },
-  'soil_temperature_level_1':            { label: 'Soil Temperature L1',   unit: 'K',    range: [240, 320] },
-  'surface_pressure':                    { label: 'Surface Pressure',      unit: 'Pa',   range: [50000, 105000] },
-  '10m_u_component_of_wind':             { label: '10m U-Wind',            unit: 'm/s',  range: [-20, 20] },
-  '10m_v_component_of_wind':             { label: '10m V-Wind',            unit: 'm/s',  range: [-20, 20] },
+  // ── GloFAS Variables (Hydrological Forecasting) ──────────────────────
+  'river_discharge_in_the_last_24_hours': { 
+    label: 'River Discharge (24h)', 
+    unit: 'm³/s', 
+    range: [0, 5000],
+    dataset: 'cems-glofas-historical'
+  },
+  'soil_wetness_index': { 
+    label: 'Soil Wetness Index', 
+    unit: '–', 
+    range: [0, 1],
+    dataset: 'cems-glofas-historical'
+  },
+  'runoff_water_equivalent': { 
+    label: 'Runoff Water Equiv.', 
+    unit: 'kg/m²', 
+    range: [0, 50],
+    dataset: 'cems-glofas-historical'
+  },
+  
+  // ── ERA5 Variables (Climate Reanalysis) ────────────────────────────
+  '2m_temperature': { 
+    label: '2m Temperature', 
+    unit: 'K', 
+    range: [220, 320],
+    dataset: 'reanalysis-era5-single-levels'
+  },
+  'total_precipitation': { 
+    label: 'Total Precipitation', 
+    unit: 'm', 
+    range: [0, 0.05],
+    dataset: 'reanalysis-era5-single-levels'
+  },
+  '2m_specific_humidity': { 
+    label: '2m Specific Humidity', 
+    unit: 'kg/kg', 
+    range: [0, 0.02],
+    dataset: 'reanalysis-era5-single-levels'
+  },
+  '10m_u_component_of_wind': { 
+    label: '10m U-Wind', 
+    unit: 'm/s', 
+    range: [-20, 20],
+    dataset: 'reanalysis-era5-single-levels'
+  },
+  '10m_v_component_of_wind': { 
+    label: '10m V-Wind', 
+    unit: 'm/s', 
+    range: [-20, 20],
+    dataset: 'reanalysis-era5-single-levels'
+  },
 };
 
 const TURBO_SRGB = [
@@ -50,6 +87,11 @@ let currentDateIdx = 0;
 let isPlaying = false;
 let playInterval = null;
 let gridCache = {};
+let windEnabled = false;
+let windCanvas = null;
+let windCtx = null;
+let windUGrid = null;
+let windVGrid = null;
 
 const varSelect   = document.getElementById('variable-select');
 const dateSlider  = document.getElementById('date-slider');
@@ -71,10 +113,19 @@ function initMap() {
     maxBounds: [[-90, -180], [90, 180]]
   });
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    noWrap: false
-  }).addTo(map);
+  // Research-quality basemap: Stamen Toner Lite (high-contrast, good for overlays)
+  // Fallback to OSM if Stamen not available.
+  try {
+    L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner-lite/{z}/{x}/{y}.png', {
+      attribution: 'Map tiles by Stamen Design, CC BY 3.0 — Map data © OpenStreetMap contributors',
+      noWrap: false,
+    }).addTo(map);
+  } catch (err) {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      noWrap: false
+    }).addTo(map);
+  }
 
   setupUI();
   loadData();
@@ -126,6 +177,9 @@ async function loadCurrentGrid() {
     paintDataLayer(grid);
     updateLegend(grid);
     updateInfoBadge(currentVariable, dateStr);
+    if (windEnabled) {
+      await loadWindForCurrentDate();
+    }
   }
 }
 
@@ -276,6 +330,217 @@ function setupUI() {
     await loadCurrentGrid();
   });
 
+  const windCheckbox = document.getElementById('wind-checkbox');
+  if (windCheckbox) {
+    windCheckbox.addEventListener('change', async (e) => {
+      windEnabled = e.target.checked;
+      if (windEnabled) {
+        await initWindLayer();
+        await loadWindForCurrentDate();
+      } else {
+        removeWindLayer();
+      }
+    });
+  }
+
+
+async function initWindLayer() {
+  if (!map) return;
+  if (windCanvas) return; // already created
+  const mapPane = map.getPanes().overlayPane;
+  windCanvas = document.createElement('canvas');
+  windCanvas.style.position = 'absolute';
+  windCanvas.style.top = '0';
+  windCanvas.style.left = '0';
+  windCanvas.width = map.getSize().x;
+  windCanvas.height = map.getSize().y;
+  windCanvas.style.pointerEvents = 'none';
+  mapPane.appendChild(windCanvas);
+  windCtx = windCanvas.getContext('2d');
+
+  map.on('move resize zoom', () => {
+    if (windCanvas) {
+      windCanvas.width = map.getSize().x;
+      windCanvas.height = map.getSize().y;
+      // clear to avoid stale artifacts
+      if (windCtx) windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
+    }
+  });
+
+  // seed particles and start animation
+  seedParticles();
+  startParticleAnimation();
+}
+
+function removeWindLayer() {
+  if (!windCanvas) return;
+  stopParticleAnimation();
+  windCanvas.remove();
+  windCanvas = null;
+  windCtx = null;
+  windUGrid = null;
+  windVGrid = null;
+  particles = [];
+}
+
+async function loadWindForCurrentDate() {
+  if (!manifest || !map) return;
+  const dateStr = dates[currentDateIdx];
+  const uGrid = await loadGridForVariableDate('10m_u_component_of_wind', dateStr);
+  const vGrid = await loadGridForVariableDate('10m_v_component_of_wind', dateStr);
+  if (uGrid && vGrid) {
+    windUGrid = uGrid;
+    windVGrid = vGrid;
+    updateWindLegend(uGrid, vGrid);
+    // reseed particles so they sample latest wind
+    seedParticles();
+  }
+}
+
+function updateWindLegend(uGrid, vGrid) {
+  if (!uGrid || !vGrid) return;
+  try {
+    const rows = uGrid.shape[0];
+    const cols = uGrid.shape[1];
+    let minMag = Infinity, maxMag = -Infinity;
+    for (let i = 0; i < rows * cols; i++) {
+      const u = uGrid.values[i];
+      const v = vGrid.values[i];
+      if (u === null || v === null) continue;
+      const m = Math.sqrt(u*u + v*v);
+      if (m < minMag) minMag = m;
+      if (m > maxMag) maxMag = m;
+    }
+    if (!isFinite(minMag)) { minMag = 0; maxMag = 0; }
+    legendUnit.textContent = 'm/s';
+    legendMin.textContent = (maxMag > 1000) ? minMag.toFixed(0) : minMag.toPrecision(3);
+    legendMax.textContent = (maxMag > 1000) ? maxMag.toFixed(0) : maxMag.toPrecision(3);
+  } catch (err) {
+    console.warn('wind legend error', err);
+  }
+}
+
+// Particle system for animated wind visualization
+let particles = [];
+let particleAnimId = null;
+const PARTICLE_COUNT = 1200;    // Denser coverage for better wind field visibility
+const PARTICLE_FADE = 0.86;     // Slightly shorter trails for snappier response
+
+function seedParticles() {
+  if (!windCanvas) return;
+  particles = [];
+  const w = windCanvas.width;
+  const h = windCanvas.height;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push({ x: Math.random() * w, y: Math.random() * h, age: Math.random() * 100 });
+  }
+}
+
+function startParticleAnimation() {
+  if (particleAnimId) return;
+  function frame() {
+    particleTick();
+    particleAnimId = requestAnimationFrame(frame);
+  }
+  particleAnimId = requestAnimationFrame(frame);
+}
+
+function stopParticleAnimation() {
+  if (particleAnimId) cancelAnimationFrame(particleAnimId);
+  particleAnimId = null;
+}
+
+function particleTick() {
+  if (!windCtx || !windCanvas || !windUGrid || !windVGrid) return;
+  const ctx = windCtx;
+  const w = windCanvas.width;
+  const h = windCanvas.height;
+  // fade previous frame
+  ctx.fillStyle = `rgba(0,0,0,${1 - PARTICLE_FADE})`;
+  ctx.fillRect(0, 0, w, h);
+
+  const rows = windUGrid.shape[0];
+  const cols = windUGrid.shape[1];
+  const latMin = windUGrid.grid.lat_min;
+  const latMax = windUGrid.grid.lat_max;
+  const lonMin = windUGrid.grid.lon_min;
+  const lonMax = windUGrid.grid.lon_max;
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    // convert pixel to lat/lon and sample wind
+    const latlng = map.containerPointToLatLng([p.x, p.y]);
+    const lat = latlng.lat;
+    const lon = latlng.lng;
+
+    // bilinear interpolation sample for smoother motion
+    function bilinearSample(gridObj, lat, lon) {
+      const rows = gridObj.shape[0];
+      const cols = gridObj.shape[1];
+      const latMin = gridObj.grid.lat_min;
+      const latMax = gridObj.grid.lat_max;
+      const lonMin = gridObj.grid.lon_min;
+      const lonMax = gridObj.grid.lon_max;
+      // fractional indices
+      const fx = ((lon - lonMin) / (lonMax - lonMin)) * (cols - 1);
+      const fy = ((latMax - lat) / (latMax - latMin)) * (rows - 1);
+      if (!isFinite(fx) || !isFinite(fy)) return 0;
+      const ix = Math.floor(fx);
+      const iy = Math.floor(fy);
+      const dx = fx - ix;
+      const dy = fy - iy;
+
+      const ix0 = Math.max(0, Math.min(cols - 1, ix));
+      const iy0 = Math.max(0, Math.min(rows - 1, iy));
+      const ix1 = Math.max(0, Math.min(cols - 1, ix + 1));
+      const iy1 = Math.max(0, Math.min(rows - 1, iy + 1));
+
+      const v00 = gridObj.values[iy0 * cols + ix0];
+      const v10 = gridObj.values[iy0 * cols + ix1];
+      const v01 = gridObj.values[iy1 * cols + ix0];
+      const v11 = gridObj.values[iy1 * cols + ix1];
+
+      // Treat null/undefined as 0 for motion continuity
+      const a = (v00 === null || v00 === undefined) ? 0 : v00;
+      const b = (v10 === null || v10 === undefined) ? 0 : v10;
+      const c = (v01 === null || v01 === undefined) ? 0 : v01;
+      const d = (v11 === null || v11 === undefined) ? 0 : v11;
+
+      const vTop = a * (1 - dx) + b * dx;
+      const vBot = c * (1 - dx) + d * dx;
+      return vTop * (1 - dy) + vBot * dy;
+    }
+
+    const u = bilinearSample(windUGrid, lat, lon) || 0;
+    const v = bilinearSample(windVGrid, lat, lon) || 0;
+
+    // convert to pixel displacement (empirical scaling)
+    // Higher scale = faster, more visible wind motion; 0.6 provides good motion perception
+    const scale = 0.6;
+    const dx = u * scale;
+    const dy = -v * scale;
+
+    const newX = (p.x + dx + w) % w;
+    const newY = (p.y + dy + h) % h;
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(newX, newY);
+    ctx.strokeStyle = 'rgba(200,230,255,0.95)';  // Slight blue tint for better contrast on basemap
+    ctx.lineWidth = 1.2;  // Slightly thicker for visibility at all zoom levels
+    ctx.lineCap = 'round';  // Smooth line caps for better aesthetics
+    ctx.stroke();
+
+    p.x = newX;
+    p.y = newY;
+    p.age += 1;
+    if (p.age > 1000) {
+      p.x = Math.random() * w;
+      p.y = Math.random() * h;
+      p.age = 0;
+    }
+  }
+}
   playBtn.addEventListener('click', togglePlayback);
 }
 

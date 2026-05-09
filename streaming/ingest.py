@@ -145,6 +145,12 @@ def parse_args() -> argparse.Namespace:
         description="Incremental daily ingest for streaming data."
     )
     parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Optional path to a streaming config JSON file (default: config.json)",
+    )
+    parser.add_argument(
         "--variable",
         type=str,
         default=None,
@@ -164,8 +170,18 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
     # CLI args override function parameters (for API handler use)
     variable = args.variable or variable
     full_window = args.full_window or full_window
+    # Allow specifying an alternate config file (useful for ERA5 vs GloFAS)
+    config_arg = getattr(args, "config", None)
 
-    config_path = Path(__file__).with_name("config.json")
+    if config_arg:
+        # If a relative path is provided, resolve relative to the streaming folder
+        candidate = Path(config_arg)
+        if not candidate.is_absolute():
+            config_path = Path(__file__).with_name(candidate.name)
+        else:
+            config_path = candidate
+    else:
+        config_path = Path(__file__).with_name("config.json")
     config = load_config(config_path)
 
     env_file = _env_override("STREAMING_ENV_FILE", config.get("env_file"))
@@ -289,6 +305,29 @@ def postprocess_and_upload(
     except ImportError:
         return {"skipped": True, "reason": "vercel_blob not installed"}
 
+    def vercel_put_with_retries(path: str, data: bytes, options: dict | None = None, attempts: int = 3) -> dict:
+        last_exc = None
+        opts = options or {}
+        for i in range(1, attempts + 1):
+            try:
+                resp = vercel_blob.put(path, data, options=opts)
+                try:
+                    print(f"[blob] put success: {path} -> {resp}")
+                except Exception:
+                    pass
+                return resp
+            except Exception as exc:
+                last_exc = exc
+                wait = 2 ** i
+                print(f"[blob] put failed attempt {i}/{attempts}: {exc}; retrying in {wait}s")
+                try:
+                    import time
+
+                    time.sleep(wait)
+                except Exception:
+                    pass
+        raise last_exc
+
     try:
         import numpy as np
         import xarray as xr
@@ -363,7 +402,7 @@ def postprocess_and_upload(
                 }
 
                 blob_path = f"streaming/{var_name}/{fetch_date.isoformat()}.json"
-                resp = vercel_blob.put(
+                resp = vercel_put_with_retries(
                     blob_path,
                     json.dumps(grid_payload).encode("utf-8"),
                     options={"access": "public"},
@@ -372,6 +411,7 @@ def postprocess_and_upload(
                     "variable": var_name,
                     "date": fetch_date.isoformat(),
                     "url": resp.get("url", ""),
+                    "dataset": dataset,
                 })
                 print(f"[blob] Uploaded {blob_path} → {resp.get('url', '?')}")
 
@@ -383,7 +423,7 @@ def postprocess_and_upload(
     # Build and upload globe manifest
     if uploaded:
         try:
-            _upload_globe_manifest(uploaded, retention_days, lag_days)
+            _upload_globe_manifest(uploaded, retention_days, lag_days, dataset)
         except Exception as exc:
             print(f"[blob] Manifest upload failed: {exc}")
 
@@ -394,6 +434,7 @@ def _upload_globe_manifest(
     newly_uploaded: list[dict[str, str]],
     retention_days: int,
     lag_days: int,
+    dataset: str | None = None,
 ) -> None:
     """Merge newly uploaded entries into the globe manifest on Vercel Blob."""
     import vercel_blob
@@ -413,39 +454,62 @@ def _upload_globe_manifest(
         pass
 
     # Merge: replace entries with same variable+date, add new ones
-    entries_map = {f"{e['variable']}__{e['date']}": e for e in existing_entries}
+    # Use keys that include dataset so we can store multiple dataset outputs
+    entries_map: dict[str, dict] = {}
+    for e in existing_entries:
+        key = f"{e.get('variable')}__{e.get('date')}__{e.get('dataset', '')}"
+        entries_map[key] = e
     for entry in newly_uploaded:
-        entries_map[f"{entry['variable']}__{entry['date']}"] = entry
+        key = f"{entry.get('variable')}__{entry.get('date')}__{entry.get('dataset', dataset or '')}"
+        entries_map[key] = entry
 
     # Prune entries outside the current window
     window_start, window_end = compute_window(retention_days, lag_days)
+    # Prune entries outside the current window
     entries = [
         e for e in entries_map.values()
         if window_start.isoformat() <= e["date"] <= window_end.isoformat()
     ]
 
     # Group by variable for the globe page
+    # Group by variable and keep dataset info; sort by date then dataset priority
     var_groups: dict[str, list] = {}
+    # Define dataset priority (higher number = higher priority in listing)
+    dataset_priority = {"reanalysis-era5-single-levels": 2, "cems-glofas-historical": 1}
     for e in entries:
-        var_groups.setdefault(e["variable"], []).append({"date": e["date"], "url": e["url"]})
+        var_groups.setdefault(e["variable"], []).append({
+            "date": e["date"],
+            "url": e.get("url", ""),
+            "dataset": e.get("dataset", ""),
+            "priority": dataset_priority.get(e.get("dataset", ""), 0),
+        })
+
+    # Sort dates within each variable by date ascending, then by priority descending
+    variables_list = []
+    for vname, dates_list in sorted(var_groups.items()):
+        sorted_dates = sorted(dates_list, key=lambda d: (d["date"], -d.get("priority", 0)))
+        # Strip internal priority before exposing
+        for d in sorted_dates:
+            d.pop("priority", None)
+        variables_list.append({"name": vname, "dates": sorted_dates})
 
     globe_manifest = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "window_start": window_start.isoformat(),
         "window_end": window_end.isoformat(),
-        "variables": [
-            {"name": vname, "dates": sorted(dates, key=lambda d: d["date"])}
-            for vname, dates in sorted(var_groups.items())
-        ],
+        "variables": variables_list,
         "_entries": entries,
     }
 
-    vercel_blob.put(
-        "streaming/manifest.json",
-        json.dumps(globe_manifest, indent=2).encode("utf-8"),
-        options={"access": "public"},
-    )
-    print(f"[blob] Globe manifest updated with {len(entries)} entries")
+    try:
+        vercel_put_with_retries(
+            "streaming/manifest.json",
+            json.dumps(globe_manifest, indent=2).encode("utf-8"),
+            options={"access": "public"},
+        )
+        print(f"[blob] Globe manifest updated with {len(entries)} entries")
+    except Exception as exc:
+        print(f"[blob] Failed to upload globe manifest: {exc}")
 
 
 if __name__ == "__main__":
