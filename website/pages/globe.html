@@ -6,7 +6,7 @@
     <title>Live Globe | spatioClimata</title>
     <meta
       name="description"
-      content="Interactive globe featuring live ERA5 climate data (precipitation, temperature, humidity, wind) and GloFAS hydrological forecasts (river discharge, soil wetness, runoff) from Copernicus, updated daily at 20:00 IST."
+      content="Interactive globe featuring live ERA5 climate data (precipitation, temperature, wind) from Copernicus, updated daily at 20:00 IST."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -46,8 +46,8 @@
 
       <!-- Control Panel -->
       <div id="globe-controls" class="glass-panel" style="z-index: 1000;">
-        <h3><i class="bi bi-broadcast"></i> Live Climate & Hydrology Data</h3>
-        <p style="font-size: 0.85rem; opacity: 0.8; margin: -0.5rem 0 1rem 0;">ERA5 + GloFAS • Updated daily 20:00 IST</p>
+        <h3><i class="bi bi-broadcast"></i> Live ERA5 Data</h3>
+        <p style="font-size: 0.85rem; opacity: 0.8; margin: -0.5rem 0 1rem 0;">Precipitation, temperature, wind • Updated daily 20:00 IST</p>
 
         <div class="control-group">
           <label for="variable-select">Variable</label>
@@ -71,6 +71,11 @@
         <div class="control-group">
           <label for="wind-checkbox">Wind Arrows</label>
           <input type="checkbox" id="wind-checkbox" />
+        </div>
+
+        <div class="control-group">
+          <label for="rain-checkbox">Rain Particles</label>
+          <input type="checkbox" id="rain-checkbox" />
         </div>
 
         <div id="color-legend">

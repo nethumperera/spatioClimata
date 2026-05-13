@@ -128,6 +128,13 @@ Current release is an MVP foundation intended to be expanded with additional dat
 - Trigger: push to `main` when website files change
 - GitHub setting required: enable GitHub Pages with "GitHub Actions" as source
 
+### Live Data Publish
+
+- Workflow: `.github/workflows/ingest-era5.yml`
+- Trigger: daily schedule at 20:00 IST, plus manual dispatch
+- Output: updates `website/data/` with the live ERA5 window and commits it back to `main`
+- Result: GitHub Pages serves the updated globe without external storage or serverless API routes
+
 ## License
 
 MIT

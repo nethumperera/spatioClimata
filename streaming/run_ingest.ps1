@@ -1,4 +1,5 @@
 param(
+    [string]$Config = "config_era5.json",
     [string]$Variable = ""
 )
 
@@ -8,12 +9,12 @@ Set-Location $scriptRoot
 $python = "C:/Users/HP/Documents/Programming/code/Scripts/python.exe"
 
 if ($Variable -ne "") {
-    & $python "ingest.py" --variable $Variable
+    & $python "ingest.py" --config $Config --variable $Variable
 } else {
     # Run all variables from config sequentially
-    $config = Get-Content "config.json" | ConvertFrom-Json
+    $config = Get-Content $Config | ConvertFrom-Json
     foreach ($var in $config.variables) {
         Write-Host "--- Ingesting: $var ---"
-        & $python "ingest.py" --variable $var
+        & $python "ingest.py" --config $Config --variable $var
     }
 }

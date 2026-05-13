@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
@@ -140,6 +139,37 @@ def resolve_output_root(config_path: Path, value: str) -> Path:
     return config_path.parent / raw
 
 
+def resolve_public_root() -> Path:
+    return Path(__file__).resolve().parents[1] / "website" / "data"
+
+
+def evict_public_day(public_root: Path, evict_date: date) -> list[str]:
+    deleted: list[str] = []
+    date_slug = evict_date.isoformat()
+    for candidate in public_root.glob(f"streaming/*/{date_slug}.json"):
+        try:
+            candidate.unlink()
+            deleted.append(str(candidate))
+        except OSError:
+            pass
+
+    manifest_path = public_root / "manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            entries = manifest.get("_entries", [])
+            entries = [entry for entry in entries if entry.get("date") != date_slug]
+            if entries != manifest.get("_entries", []):
+                manifest["_entries"] = entries
+                manifest["variables"] = []
+                manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+                deleted.append(str(manifest_path))
+        except Exception:
+            pass
+
+    return deleted
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Incremental daily ingest for streaming data."
@@ -148,7 +178,7 @@ def parse_args() -> argparse.Namespace:
         "--config",
         type=str,
         default=None,
-        help="Optional path to a streaming config JSON file (default: config.json)",
+        help="Optional path to a streaming config JSON file (default: config_era5.json)",
     )
     parser.add_argument(
         "--variable",
@@ -170,7 +200,7 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
     # CLI args override function parameters (for API handler use)
     variable = args.variable or variable
     full_window = args.full_window or full_window
-    # Allow specifying an alternate config file (useful for ERA5 vs GloFAS)
+    # Allow specifying an alternate config file for other dataset experiments.
     config_arg = getattr(args, "config", None)
 
     if config_arg:
@@ -181,7 +211,7 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
         else:
             config_path = candidate
     else:
-        config_path = Path(__file__).with_name("config.json")
+        config_path = Path(__file__).with_name("config_era5.json")
     config = load_config(config_path)
 
     env_file = _env_override("STREAMING_ENV_FILE", config.get("env_file"))
@@ -194,11 +224,12 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
         _env_override("STREAMING_LAG_DAYS", str(config.get("lag_days", 2)))
     )
 
-    vercel_default_root = "/tmp/streaming/data" if os.getenv("VERCEL") == "1" else None
-    default_root = vercel_default_root or config.get("output_root", "./data")
+    default_root = config.get("output_root", "./data")
     output_root_value = _env_override("STREAMING_OUTPUT_ROOT", default_root)
     output_root = resolve_output_root(config_path, output_root_value)
     output_root.mkdir(parents=True, exist_ok=True)
+    public_root = resolve_public_root()
+    public_root.mkdir(parents=True, exist_ok=True)
 
     area_values = config.get("area")
     area = AreaBBox.from_sequence(area_values) if area_values else None
@@ -235,6 +266,7 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
     evicted_files: list[str] = []
     if evict_date is not None:
         evicted_files = evict_old_day(output_root, evict_date, dataset)
+        evicted_files.extend(evict_public_day(public_root, evict_date))
 
     # Fetch only the newest day (or full window if bootstrapping)
     request = FetchRequest(
@@ -252,14 +284,15 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
 
     result = fetch(request, open_browser_on_missing_key=False, interactive_on_missing_key=False)
 
-    # Post-process and upload to Vercel Blob for the globe visualization
-    blob_result = postprocess_and_upload(
+    # Post-process and publish the public JSON used by the globe visualization
+    publish_result = postprocess_and_upload(
         saved_files=result.saved_files or result.downloaded_files,
         variables_fetched=variables_to_fetch,
         fetch_date=fetch_date,
         dataset=dataset,
         retention_days=retention_days,
         lag_days=lag_days,
+        public_root=public_root,
     )
 
     # Write manifest with incremental metadata
@@ -281,12 +314,12 @@ def main(variable: str | None = None, full_window: bool = False) -> None:
         "processed_files": result.processed_files,
         "saved_files": result.saved_files,
         "warnings": result.warnings,
-        "blob_upload": blob_result,
+        "publish_result": publish_result,
     }
     write_manifest(output_root, manifest)
 
 
-# ── Post-processing → Vercel Blob ──────────────────────────────
+# ── Post-processing → Website Data ─────────────────────────────
 def postprocess_and_upload(
     saved_files: list[str],
     variables_fetched: list[str],
@@ -294,39 +327,9 @@ def postprocess_and_upload(
     dataset: str,
     retention_days: int,
     lag_days: int,
+    public_root: Path,
 ) -> dict[str, Any]:
-    """Read NetCDF outputs, downsample to 1° grid, upload JSON to Vercel Blob."""
-    blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
-    if not blob_token:
-        return {"skipped": True, "reason": "BLOB_READ_WRITE_TOKEN not set"}
-
-    try:
-        import vercel_blob
-    except ImportError:
-        return {"skipped": True, "reason": "vercel_blob not installed"}
-
-    def vercel_put_with_retries(path: str, data: bytes, options: dict | None = None, attempts: int = 3) -> dict:
-        last_exc = None
-        opts = options or {}
-        for i in range(1, attempts + 1):
-            try:
-                resp = vercel_blob.put(path, data, options=opts)
-                try:
-                    print(f"[blob] put success: {path} -> {resp}")
-                except Exception:
-                    pass
-                return resp
-            except Exception as exc:
-                last_exc = exc
-                wait = 2 ** i
-                print(f"[blob] put failed attempt {i}/{attempts}: {exc}; retrying in {wait}s")
-                try:
-                    import time
-
-                    time.sleep(wait)
-                except Exception:
-                    pass
-        raise last_exc
+    """Read NetCDF outputs, downsample to 1° grid, and publish JSON into the website data tree."""
 
     try:
         import numpy as np
@@ -342,7 +345,7 @@ def postprocess_and_upload(
         try:
             ds = xr.open_dataset(nc_file)
         except Exception as exc:
-            print(f"[blob] Could not open {nc_file}: {exc}")
+            print(f"[publish] Could not open {nc_file}: {exc}")
             continue
 
         for var_name in variables_fetched:
@@ -361,7 +364,7 @@ def postprocess_and_upload(
                 lat_dim = next((d for d in da.dims if d.lower().startswith("lat")), None)
                 lon_dim = next((d for d in da.dims if d.lower().startswith("lon")), None)
                 if not lat_dim or not lon_dim:
-                    print(f"[blob] Cannot find lat/lon dims for {var_name}")
+                    print(f"[publish] Cannot find lat/lon dims for {var_name}")
                     continue
 
                 # Coarsen to ~1° resolution
@@ -401,55 +404,52 @@ def postprocess_and_upload(
                     "values": flat,
                 }
 
-                blob_path = f"streaming/{var_name}/{fetch_date.isoformat()}.json"
-                resp = vercel_put_with_retries(
-                    blob_path,
-                    json.dumps(grid_payload).encode("utf-8"),
-                    options={"access": "public"},
-                )
+                publish_path = public_root / "streaming" / var_name / f"{fetch_date.isoformat()}.json"
+                publish_path.parent.mkdir(parents=True, exist_ok=True)
+                publish_path.write_text(json.dumps(grid_payload, indent=2), encoding="utf-8")
                 uploaded.append({
                     "variable": var_name,
                     "date": fetch_date.isoformat(),
-                    "url": resp.get("url", ""),
+                    "url": f"../data/streaming/{var_name}/{fetch_date.isoformat()}.json",
                     "dataset": dataset,
                 })
-                print(f"[blob] Uploaded {blob_path} → {resp.get('url', '?')}")
+                print(f"[publish] Wrote {publish_path}")
 
             except Exception as exc:
-                print(f"[blob] Error processing {var_name}: {exc}")
+                print(f"[publish] Error processing {var_name}: {exc}")
 
         ds.close()
 
     # Build and upload globe manifest
     if uploaded:
         try:
-            _upload_globe_manifest(uploaded, retention_days, lag_days, dataset)
+            publish_globe_manifest(uploaded, retention_days, lag_days, dataset, public_root)
         except Exception as exc:
-            print(f"[blob] Manifest upload failed: {exc}")
+            print(f"[publish] Manifest publish failed: {exc}")
 
     return {"uploaded": uploaded}
 
 
-def _upload_globe_manifest(
+def publish_globe_manifest(
     newly_uploaded: list[dict[str, str]],
     retention_days: int,
     lag_days: int,
     dataset: str | None = None,
+    public_root: Path | None = None,
 ) -> None:
-    """Merge newly uploaded entries into the globe manifest on Vercel Blob."""
-    import vercel_blob
+    """Merge newly uploaded entries into the globe manifest stored in the website data tree."""
+    if public_root is None:
+        public_root = resolve_public_root()
 
-    # Try to load existing manifest
+    public_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = public_root / "manifest.json"
+
+    # Try to load existing manifest from the published site tree.
     existing_entries: list[dict[str, str]] = []
     try:
-        blobs = vercel_blob.list()
-        for blob in blobs.get("blobs", []):
-            if blob.get("pathname") == "streaming/manifest.json":
-                import urllib.request
-                with urllib.request.urlopen(blob["url"]) as resp:
-                    existing = json.loads(resp.read().decode("utf-8"))
-                    existing_entries = existing.get("_entries", [])
-                break
+        if manifest_path.exists():
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            existing_entries = existing.get("_entries", [])
     except Exception:
         pass
 
@@ -502,14 +502,10 @@ def _upload_globe_manifest(
     }
 
     try:
-        vercel_put_with_retries(
-            "streaming/manifest.json",
-            json.dumps(globe_manifest, indent=2).encode("utf-8"),
-            options={"access": "public"},
-        )
-        print(f"[blob] Globe manifest updated with {len(entries)} entries")
+        manifest_path.write_text(json.dumps(globe_manifest, indent=2), encoding="utf-8")
+        print(f"[publish] Globe manifest updated with {len(entries)} entries")
     except Exception as exc:
-        print(f"[blob] Failed to upload globe manifest: {exc}")
+        print(f"[publish] Failed to write globe manifest: {exc}")
 
 
 if __name__ == "__main__":

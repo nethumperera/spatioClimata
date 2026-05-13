@@ -3,29 +3,9 @@
    ================================================================ */
 
 // ── Configuration ──────────────────────────────────────────────
-const MANIFEST_URL = 'https://kndyu62zzumvdajy.public.blob.vercel-storage.com/streaming/manifest.json';
+const MANIFEST_URL = '../data/manifest.json';
 
 const VAR_META = {
-  // ── GloFAS Variables (Hydrological Forecasting) ──────────────────────
-  'river_discharge_in_the_last_24_hours': { 
-    label: 'River Discharge (24h)', 
-    unit: 'm³/s', 
-    range: [0, 5000],
-    dataset: 'cems-glofas-historical'
-  },
-  'soil_wetness_index': { 
-    label: 'Soil Wetness Index', 
-    unit: '–', 
-    range: [0, 1],
-    dataset: 'cems-glofas-historical'
-  },
-  'runoff_water_equivalent': { 
-    label: 'Runoff Water Equiv.', 
-    unit: 'kg/m²', 
-    range: [0, 50],
-    dataset: 'cems-glofas-historical'
-  },
-  
   // ── ERA5 Variables (Climate Reanalysis) ────────────────────────────
   '2m_temperature': { 
     label: '2m Temperature', 
@@ -37,12 +17,6 @@ const VAR_META = {
     label: 'Total Precipitation', 
     unit: 'm', 
     range: [0, 0.05],
-    dataset: 'reanalysis-era5-single-levels'
-  },
-  '2m_specific_humidity': { 
-    label: '2m Specific Humidity', 
-    unit: 'kg/kg', 
-    range: [0, 0.02],
     dataset: 'reanalysis-era5-single-levels'
   },
   '10m_u_component_of_wind': { 
@@ -92,6 +66,10 @@ let windCanvas = null;
 let windCtx = null;
 let windUGrid = null;
 let windVGrid = null;
+let rainEnabled = false;
+let rainCanvas = null;
+let rainCtx = null;
+let rainGrid = null;
 
 const varSelect   = document.getElementById('variable-select');
 const dateSlider  = document.getElementById('date-slider');
@@ -113,19 +91,39 @@ function initMap() {
     maxBounds: [[-90, -180], [90, 180]]
   });
 
-  // Research-quality basemap: Stamen Toner Lite (high-contrast, good for overlays)
-  // Fallback to OSM if Stamen not available.
-  try {
-    L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner-lite/{z}/{x}/{y}.png', {
-      attribution: 'Map tiles by Stamen Design, CC BY 3.0 — Map data © OpenStreetMap contributors',
-      noWrap: false,
-    }).addTo(map);
-  } catch (err) {
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Use a reliable high-contrast basemap. Stamen has been returning 503s in this environment,
+  // so fall back to Carto + OpenStreetMap when tiles fail.
+  const basemaps = [
+    {
+      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    },
+    {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
       attribution: '&copy; OpenStreetMap contributors',
-      noWrap: false
-    }).addTo(map);
-  }
+    },
+  ];
+
+  let activeBaseLayer = null;
+  const addBasemap = (index) => {
+    const source = basemaps[index];
+    if (!source) return;
+    const layer = L.tileLayer(source.url, {
+      attribution: source.attribution,
+      noWrap: false,
+      updateWhenIdle: true,
+    });
+    layer.on('tileerror', () => {
+      if (activeBaseLayer === layer && index + 1 < basemaps.length) {
+        map.removeLayer(layer);
+        addBasemap(index + 1);
+      }
+    });
+    activeBaseLayer = layer;
+    layer.addTo(map);
+  };
+
+  addBasemap(0);
 
   setupUI();
   loadData();
@@ -139,8 +137,9 @@ async function loadData() {
     populateUI();
     await loadCurrentGrid();
   } catch (err) {
-    console.warn('Manifest not found, creating Demo Data...', err);
+    console.warn('Live manifest not found, creating sample data...', err);
     useDemoData();
+    infoText.textContent = 'Live manifest unavailable - showing sample data';
   }
   loadingEl.classList.add('hidden');
 }
@@ -180,14 +179,18 @@ async function loadCurrentGrid() {
     if (windEnabled) {
       await loadWindForCurrentDate();
     }
+    if (rainEnabled) {
+      await loadRainForCurrentDate();
+    }
   }
 }
 
 // ── Demo Data Fallback ────────────────────────────────
 const DEMO_VARS = [
-  { key: '2m_temperature', label: '2m Temperature (Demo)', min: 220, max: 320, gen: (lat, lon, day) => 288 - Math.abs(lat)*1.1 + Math.sin(lon*0.08)*5 + Math.cos(lat*0.12+lon*0.05+day*0.3)*4 },
-  { key: 'river_discharge_in_the_last_24_hours', label: 'River Discharge (Demo)', min: 0, max: 5000, gen: (lat, lon, day) => Math.max(0, 1200 - Math.abs(lat)*25 + Math.sin(lon*0.06+day*0.5)*800 + Math.cos(lat*0.1)*500) },
-  { key: 'total_precipitation', label: 'Total Precipitation (Demo)', min: 0, max: 0.05, gen: (lat, lon, day) => Math.max(0, 0.02 - Math.abs(lat)*0.0003 + Math.sin(lon*0.09+day*0.4)*0.012 + Math.cos(lat*0.15+day*0.2)*0.008) },
+  { key: '2m_temperature', label: '2m Temperature', min: 220, max: 320, gen: (lat, lon, day) => 288 - Math.abs(lat)*1.1 + Math.sin(lon*0.08)*5 + Math.cos(lat*0.12+lon*0.05+day*0.3)*4 },
+  { key: 'total_precipitation', label: 'Total Precipitation', min: 0, max: 0.05, gen: (lat, lon, day) => Math.max(0, 0.02 - Math.abs(lat)*0.0003 + Math.sin(lon*0.09+day*0.4)*0.012 + Math.cos(lat*0.15+day*0.2)*0.008) },
+  { key: '10m_u_component_of_wind', label: '10m U-Wind', min: -20, max: 20, gen: (lat, lon, day) => Math.sin(lat*0.08+day*0.2)*4 + Math.cos(lon*0.06+day*0.3)*3 },
+  { key: '10m_v_component_of_wind', label: '10m V-Wind', min: -20, max: 20, gen: (lat, lon, day) => Math.cos(lat*0.06+day*0.3)*4 - Math.sin(lon*0.04+day*0.15)*2 },
 ];
 
 function buildDemoDates() {
@@ -343,6 +346,19 @@ function setupUI() {
     });
   }
 
+  const rainCheckbox = document.getElementById('rain-checkbox');
+  if (rainCheckbox) {
+    rainCheckbox.addEventListener('change', async (e) => {
+      rainEnabled = e.target.checked;
+      if (rainEnabled) {
+        await initRainLayer();
+        await loadRainForCurrentDate();
+      } else {
+        removeRainLayer();
+      }
+    });
+  }
+
 
 async function initWindLayer() {
   if (!map) return;
@@ -381,6 +397,152 @@ function removeWindLayer() {
   windUGrid = null;
   windVGrid = null;
   particles = [];
+}
+
+async function loadRainForCurrentDate() {
+  if (!manifest || !map) return;
+  const dateStr = dates[currentDateIdx];
+  const precipGrid = await loadGridForVariableDate('total_precipitation', dateStr);
+  if (precipGrid) {
+    rainGrid = precipGrid;
+    seedRainParticles();
+  }
+}
+
+async function initRainLayer() {
+  if (!map) return;
+  if (rainCanvas) return;
+  const mapPane = map.getPanes().overlayPane;
+  rainCanvas = document.createElement('canvas');
+  rainCanvas.style.position = 'absolute';
+  rainCanvas.style.top = '0';
+  rainCanvas.style.left = '0';
+  rainCanvas.width = map.getSize().x;
+  rainCanvas.height = map.getSize().y;
+  rainCanvas.style.pointerEvents = 'none';
+  mapPane.appendChild(rainCanvas);
+  rainCtx = rainCanvas.getContext('2d');
+
+  map.on('move resize zoom', () => {
+    if (rainCanvas) {
+      rainCanvas.width = map.getSize().x;
+      rainCanvas.height = map.getSize().y;
+      if (rainCtx) rainCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+    }
+  });
+
+  seedRainParticles();
+  startRainAnimation();
+}
+
+function removeRainLayer() {
+  if (!rainCanvas) return;
+  stopRainAnimation();
+  rainCanvas.remove();
+  rainCanvas = null;
+  rainCtx = null;
+  rainGrid = null;
+  rainParticles = [];
+}
+
+// Rain / monsoon particles use precipitation intensity and optional wind drift.
+let rainParticles = [];
+let rainAnimId = null;
+const RAIN_COUNT = 900;
+
+function seedRainParticles() {
+  if (!rainCanvas) return;
+  rainParticles = [];
+  const w = rainCanvas.width;
+  const h = rainCanvas.height;
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    rainParticles.push({ x: Math.random() * w, y: Math.random() * h, age: Math.random() * 100 });
+  }
+}
+
+function startRainAnimation() {
+  if (rainAnimId) return;
+  function frame() {
+    rainTick();
+    rainAnimId = requestAnimationFrame(frame);
+  }
+  rainAnimId = requestAnimationFrame(frame);
+}
+
+function stopRainAnimation() {
+  if (rainAnimId) cancelAnimationFrame(rainAnimId);
+  rainAnimId = null;
+}
+
+function rainTick() {
+  if (!rainCtx || !rainCanvas || !rainGrid) return;
+  const ctx = rainCtx;
+  const w = rainCanvas.width;
+  const h = rainCanvas.height;
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(0, 0, w, h);
+
+  const rows = rainGrid.shape[0];
+  const cols = rainGrid.shape[1];
+  const latMin = rainGrid.grid.lat_min;
+  const latMax = rainGrid.grid.lat_max;
+  const lonMin = rainGrid.grid.lon_min;
+  const lonMax = rainGrid.grid.lon_max;
+
+  function sample(gridObj, lat, lon) {
+    const fx = ((lon - lonMin) / (lonMax - lonMin)) * (cols - 1);
+    const fy = ((latMax - lat) / (latMax - latMin)) * (rows - 1);
+    if (!isFinite(fx) || !isFinite(fy)) return 0;
+    const ix = Math.floor(fx);
+    const iy = Math.floor(fy);
+    const dx = fx - ix;
+    const dy = fy - iy;
+    const ix0 = Math.max(0, Math.min(cols - 1, ix));
+    const iy0 = Math.max(0, Math.min(rows - 1, iy));
+    const ix1 = Math.max(0, Math.min(cols - 1, ix + 1));
+    const iy1 = Math.max(0, Math.min(rows - 1, iy + 1));
+    const v00 = gridObj.values[iy0 * cols + ix0] ?? 0;
+    const v10 = gridObj.values[iy0 * cols + ix1] ?? 0;
+    const v01 = gridObj.values[iy1 * cols + ix0] ?? 0;
+    const v11 = gridObj.values[iy1 * cols + ix1] ?? 0;
+    const top = v00 * (1 - dx) + v10 * dx;
+    const bot = v01 * (1 - dx) + v11 * dx;
+    return top * (1 - dy) + bot * dy;
+  }
+
+  for (let i = 0; i < rainParticles.length; i++) {
+    const p = rainParticles[i];
+    const latlng = map.containerPointToLatLng([p.x, p.y]);
+    const lat = latlng.lat;
+    const lon = latlng.lng;
+    const intensity = Math.max(0, sample(rainGrid, lat, lon));
+    const windU = windUGrid ? sample(windUGrid, lat, lon) : 0;
+    const windV = windVGrid ? sample(windVGrid, lat, lon) : 0;
+
+    const speed = 1.8 + intensity * 180;
+    const dx = windU * 0.25;
+    const dy = speed + (-windV * 0.08);
+
+    const newX = (p.x + dx + w) % w;
+    const newY = p.y + dy;
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(newX, newY);
+    ctx.strokeStyle = `rgba(120, 200, 255, ${Math.min(0.95, 0.18 + intensity * 25)})`;
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    p.x = newX;
+    p.y = newY;
+    p.age += 1;
+    if (p.y > h || p.age > 400) {
+      p.x = Math.random() * w;
+      p.y = -10;
+      p.age = 0;
+    }
+  }
 }
 
 async function loadWindForCurrentDate() {
